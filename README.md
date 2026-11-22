@@ -69,5 +69,13 @@ désactiver ou supprimer un compte.
 │   ├── config.js           URL et clé anon Supabase (à renseigner)
 │   └── app.js              Logique de l'application
 └── supabase/
-    └── schema.sql          Tables, RLS, fonctions RPC, comptes initiaux
+    ├── schema.sql          Schema de référence (à exécuter une fois à l'installation)
+    └── migrations/         Modifications du schéma, un script numéroté par changement
 ```
+
+## Évolution du schéma
+
+`supabase/schema.sql` est le schéma de référence executé à l'installation.
+Toute modification ultérieure se fait dans un script dédié
+`supabase/migrations/NN_description.sql`, à executer dans le SQL Editor de
+Supabase dans l'ordre des numéros.
