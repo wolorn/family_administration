@@ -351,7 +351,25 @@ a.detail-link { color: var(--primary); }
   stroke: var(--border);
 }
 .tree-card.deceased { fill: #f1f2f4; stroke: #cfd4da; }
-.tree-edge { stroke: #94a3b8; stroke-width: 1.5; }
+.tree-edge { stroke: #64748b; stroke-width: 1.5; }
+.tree-edge-a0 { stroke: #2563eb; }
+.tree-edge-a1 { stroke: #a21caf; }
+.tree-edge-both { stroke: #64748b; }
 .tree-spouse-link { stroke: #f59e0b; stroke-width: 2; }
+
+.tree-legend {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.legend-item { display: inline-flex; align-items: center; gap: 0.3rem; }
+.legend-line { display: inline-block; width: 18px; height: 3px; border-radius: 2px; }
+.legend-a0 { background: #2563eb; }
+.legend-a1 { background: #a21caf; }
+.legend-both { background: #64748b; }
+
+@media (max-width: 700px) { .tree-legend { display: none; } }
 .tree-name { font-size: 12px; fill: var(--text); }
 .tree-dates { font-size: 10px; fill: var(--muted); }

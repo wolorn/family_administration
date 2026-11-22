@@ -204,10 +204,13 @@ function drawTree(members) {
       const toX = c.centerX;
       const toY = childCard.y;
       const midY = fromY + spanY * ((i + 1) / (unit.children.length + 1));
+      const variant =
+        c.anchor === 'couple' ? 'tree-edge-both' :
+        c.anchor === 0 ? 'tree-edge-a0' : 'tree-edge-a1';
       svg.appendChild(svgEl('path', {
         d: `M ${fromX} ${fromY} L ${fromX} ${midY} L ${toX} ${midY} L ${toX} ${toY}`,
         fill: 'none',
-        class: 'tree-edge',
+        class: 'tree-edge ' + variant,
       }));
     });
   }
