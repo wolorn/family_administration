@@ -31,6 +31,13 @@ adossé à une base Supabase.
 - Comptes utilisateurs avec deux rôles : `admin` (lecture + écriture + gestion des
   comptes) et `viewer` (lecture seule). Les écritures sont refusées côté serveur
   pour les non-admins, pas seulement cachées dans l'interface.
+- **Propositions de modification** : un utilisateur non admin peut ouvrir la fiche
+  d'un membre, cliquer « Proposer une modification » et corriger ou compléter les
+  champs. Rien n'est publié immédiatement : la proposition est stockée, un email
+  est envoyé aux administrateurs, et l'admin la retrouve dans « Modifications
+  proposées » sous forme de comparaison avant/après (ancienne valeur barrée en
+  rouge, valeur proposée en vert) avec boutons Accepter/Refuser. Accepter applique
+  les données et les relations (père, mère, conjoint) proposées.
 
 ## Sécurité
 
@@ -48,8 +55,9 @@ adossé à une base Supabase.
 1. **Créer le projet Supabase**
    - Créez un projet sur [supabase.com](https://supabase.com).
    - Ouvrez le *SQL Editor* et exécutez l'intégralité de `supabase/schema.sql`.
-   - Exécutez ensuite les migrations `supabase/migrations/02_family_name.sql`
-     puis `03_add_spouse.sql` (le nom de famille par défaut « Ma Famille » se
+   - Exécutez ensuite les migrations, dans l'ordre : `02_family_name.sql`,
+     `03_add_spouse.sql`, `04_grant_app_settings_anon.sql`,
+     `05_member_proposals.sql` (le nom de famille par défaut « Ma Famille » se
      change dans la table `app_settings` : `update app_settings set value = '…'
      where key = 'family_name';`).
 
@@ -77,6 +85,41 @@ Connectez-vous sur le site avec le compte `admin`, ouvrez « Utilisateurs » :
 vous pouvez y créer des comptes (lecture seule ou admin), changer un mot de passe,
 désactiver ou supprimer un compte.
 
+## Notifications email des propositions
+
+L'email envoyé aux administrateurs lors d'une proposition passe par une
+**fonction Edge** Supabase (`supabase/functions/notify-proposal`) qui envoie
+les messages en SMTP via votre compte Proton Mail.
+
+Pré-requis côté Proton : créez un **jeton SMTP** (Proton Mail →
+*Tous les réglages → IMAP/SMTP → Jetons SMTP → Générer*) et notez le nom
+d'utilisateur et le mot de passe de ce jeton.
+
+Déploiement (Supabase CLI installée et projet lié) :
+
+```sh
+supabase functions deploy notify-proposal
+supabase secrets set SMTP_USER="nom_utilisateur_du_jeton" \
+  SMTP_PASS="mot_de_passe_du_jeton" \
+  NOTIFY_FROM_EMAIL="vous@exemple.fr" \
+  NOTIFY_TO_EMAILS="admin1@exemple.fr,admin2@exemple.fr"
+```
+
+Secrets :
+- `SMTP_USER` / `SMTP_PASS` : identifiants du jeton SMTP Proton.
+- `SMTP_HOST` / `SMTP_PORT` : facultatifs (défauts Proton :
+  `smtp.protonmail.ch`, port `587`) — utiles si vous changez de fournisseur.
+- `NOTIFY_FROM_EMAIL` : émetteur ; doit être l'adresse de votre compte
+  Proton ou un de ses alias.
+- `NOTIFY_TO_EMAILS` : adresses des administrateurs, séparées par des virgules.
+
+L'équivalent est possible via le portail web : *Edge Functions → Create a new
+function → Via Dashboard*, collez le code puis onglet *Secrets* de la fonction.
+
+Si la fonction n'est pas déployée ou échoue, **la proposition reste tout de même
+enregistrée** et visible dans « Modifications proposées » : seul l'email est
+perdu.
+
 ## Structure du projet
 
 ```
@@ -90,7 +133,9 @@ désactiver ou supprimer un compte.
 │   └── tree.js             Arbre généalogique SVG
 └── supabase/
     ├── schema.sql          Schema de référence (à exécuter une fois à l'installation)
-    └── migrations/         Modifications du schéma, un script numéroté par changement
+    ├── migrations/         Modifications du schéma, un script numéroté par changement
+    └── functions/
+        └── notify-proposal/  Fonction Edge : email aux admins (Resend)
 ```
 
 ## Évolution du schéma

@@ -22,6 +22,9 @@ const supabase = isConfigured ? createClient(supabaseUrl, supabaseKey) : null;
 let password = sessionStorage.getItem('family_admin_password') || '';
 let role = null;
 let members = [];
+let formMode = 'edit'; // 'edit' (admin) | 'proposal' (proposition d'un viewer)
+let proposals = [];
+let successTimer = null;
 
 // ------------------------------------------------------------
 // Raccourcis DOM
@@ -49,7 +52,9 @@ const els = {
   birthdayBanner: $('birthday-banner'),
   adminActions: $('admin-actions'),
   addMemberBtn: $('add-member-btn'),
+  proposalsBtn: $('proposals-btn'),
   toggleUsersBtn: $('toggle-users-btn'),
+  globalSuccess: $('global-success'),
   globalError: $('global-error'),
   tbody: $('members-tbody'),
   thActions: $('th-actions'),
@@ -59,16 +64,22 @@ const els = {
   usersError: $('users-error'),
   userForm: $('user-form'),
   userUsername: $('user-username'),
+  proposalsSection: $('proposals-section'),
+  proposalsList: $('proposals-list'),
+  proposalsError: $('proposals-error'),
   memberModal: $('member-modal'),
   memberModalTitle: $('member-modal-title'),
   memberDetails: $('member-details'),
   memberAdminActions: $('member-admin-actions'),
+  memberViewerActions: $('member-viewer-actions'),
+  proposeBtn: $('propose-btn'),
   editMemberBtn: $('edit-member-btn'),
   deleteMemberBtn: $('delete-member-btn'),
   memberError: $('member-error'),
   formModal: $('member-form-modal'),
   formTitle: $('member-form-title'),
   form: $('member-form'),
+  formNote: $('form-note'),
   formError: $('form-error'),
   formSubmit: $('form-submit'),
 };
@@ -139,6 +150,8 @@ function logout() {
   els.sessionBar.hidden = true;
   els.loginSection.hidden = false;
   els.loginPassword.value = '';
+  proposals = [];
+  els.proposalsSection.hidden = true;
 }
 
 function showApp() {
@@ -152,6 +165,7 @@ function showApp() {
   els.thActions.hidden = !isAdmin;
   updateSortIndicators();
   renderTable();
+  if (isAdmin) refreshProposalsCount();
 }
 
 function showGlobalError(message) {
@@ -403,12 +417,17 @@ function openMemberModal(id) {
   }
 
   els.memberAdminActions.hidden = role !== 'admin';
+  els.memberViewerActions.hidden = role === 'admin';
   els.editMemberBtn.onclick = () => {
     els.memberModal.close();
     openMemberForm(m);
   };
   els.deleteMemberBtn.onclick = () => {
     deleteMember(m);
+  };
+  els.proposeBtn.onclick = () => {
+    els.memberModal.close();
+    openMemberForm(m, 'proposal');
   };
   els.memberModal.showModal();
 }
@@ -457,9 +476,15 @@ function fillSpouseSelect(currentSpouseId, excludeId) {
   }
 }
 
-function openMemberForm(member) {
+function openMemberForm(member, mode = 'edit') {
+  formMode = member ? mode : 'edit';
   clearError(els.formError);
-  els.formTitle.textContent = member ? 'Modifier le membre' : 'Nouveau membre';
+  els.formNote.hidden = formMode !== 'proposal';
+  if (formMode === 'proposal') {
+    els.formTitle.textContent = 'Proposer une modification';
+  } else {
+    els.formTitle.textContent = member ? 'Modifier le membre' : 'Nouveau membre';
+  }
   $('f-first-name').value = member ? member.first_name : '';
   $('f-last-name').value = member ? member.last_name : '';
   $('f-sex').value = member ? member.sex : '';
@@ -476,10 +501,13 @@ function openMemberForm(member) {
   const spouse = member && (member.spouse || [])[0];
   fillSpouseSelect(spouse ? spouse.id : null, member ? member.id : null);
 
-  els.formSubmit.textContent = member ? 'Enregistrer' : 'Créer';
+  els.formSubmit.textContent = formMode === 'proposal'
+    ? 'Envoyer la proposition'
+    : (member ? 'Enregistrer' : 'Créer');
   els.form.onsubmit = (e) => {
     e.preventDefault();
-    saveMember(member);
+    if (formMode === 'proposal') submitProposal(member);
+    else saveMember(member);
   };
   els.formModal.showModal();
 }
@@ -536,6 +564,241 @@ async function saveMember(existing) {
     showError(els.formError, err.message);
   } finally {
     els.formSubmit.disabled = false;
+  }
+}
+
+// ------------------------------------------------------------
+// Proposals de modification (viewer) et revue (admin)
+// ------------------------------------------------------------
+const PROPOSAL_FIELDS = [
+  ['first_name', 'Prénom'],
+  ['last_name', 'Nom'],
+  ['sex', 'Sexe'],
+  ['birth_date', 'Date de naissance'],
+  ['address', 'Adresse'],
+  ['email', 'Adresse email'],
+  ['wedding_date', 'Date de mariage'],
+  ['death_date', 'Date de décès'],
+  ['pere', 'Père'],
+  ['mere', 'Mère'],
+  ['spouse', 'Conjoint'],
+];
+
+const DATE_FIELDS = new Set(['birth_date', 'wedding_date', 'death_date']);
+const RELATION_FIELDS = new Set(['pere', 'mere', 'spouse']);
+
+// Valeur brute actuelle d'un champ (ids de relations inclus).
+function currentFieldValue(member, key) {
+  if (key === 'pere') return parentsOf(member, 'M') ? parentsOf(member, 'M').id : null;
+  if (key === 'mere') return parentsOf(member, 'F') ? parentsOf(member, 'F').id : null;
+  if (key === 'spouse') return member.spouse && member.spouse[0] ? member.spouse[0].id : null;
+  return member[key] ?? null;
+}
+
+// Valeur lisible d'un champ brut (pour diff, tableau et email).
+function formatProposalValue(key, raw) {
+  if (raw == null || raw === '') return null;
+  if (key === 'sex') return SEX_LABEL[raw] || raw;
+  if (DATE_FIELDS.has(key)) return formatDate(raw);
+  if (RELATION_FIELDS.has(key)) {
+    const m = findMember(raw);
+    return m ? `${m.first_name} ${m.last_name}` : '(membre inconnu)';
+  }
+  return raw;
+}
+
+function computeProposalChanges(member, payload) {
+  const changes = [];
+  for (const [key, label] of PROPOSAL_FIELDS) {
+    const before = currentFieldValue(member, key);
+    const after = payload[key] || null;
+    if ((before ?? '') !== (after ?? '')) {
+      changes.push({
+        field: label,
+        from: formatProposalValue(key, before),
+        to: formatProposalValue(key, after),
+      });
+    }
+  }
+  return changes;
+}
+
+// Soumission d'une proposition par un utilisateur non admin.
+async function submitProposal(existing) {
+  clearError(els.formError);
+  const payload = {
+    last_name: $('f-last-name').value.trim(),
+    first_name: $('f-first-name').value.trim(),
+    sex: $('f-sex').value,
+    birth_date: $('f-birth-date').value,
+    address: $('f-address').value.trim(),
+    email: $('f-email').value.trim(),
+    wedding_date: $('f-wedding-date').value || '',
+    death_date: $('f-death-date').value || '',
+    pere: $('f-pere').value || '',
+    mere: $('f-mere').value || '',
+    spouse: $('f-conjoint').value || '',
+  };
+  const changes = computeProposalChanges(existing, payload);
+
+  try {
+    els.formSubmit.disabled = true;
+    const res = await rpc('submit_proposal', {
+      p_password: password,
+      p_member_id: existing.id,
+      p_proposal: payload,
+    });
+    // Notification email des admins : facultative, l'échec n'annule
+    // pas la proposition (voir README déploiement de la fonction).
+    try {
+      const { error } = await supabase.functions.invoke('notify-proposal', {
+        body: {
+          member: `${payload.first_name} ${payload.last_name}`,
+          proposed_by: res ? res.username : '',
+          changes,
+        },
+      });
+      if (error) console.warn('Notification admin non envoyée :', error.message);
+    } catch (notifyErr) {
+      console.warn('Notification admin non envoyée :', notifyErr);
+    }
+    els.formModal.close();
+    showGlobalSuccess('Proposition envoyée : elle sera visible après validation par un administrateur.');
+  } catch (err) {
+    showError(els.formError, err.message);
+  } finally {
+    els.formSubmit.disabled = false;
+  }
+}
+
+function showGlobalSuccess(message) {
+  els.globalSuccess.textContent = message;
+  els.globalSuccess.hidden = false;
+  clearTimeout(successTimer);
+  successTimer = setTimeout(() => { els.globalSuccess.hidden = true; }, 6000);
+}
+
+// Compteur sur le bouton admin (au chargement de session).
+async function refreshProposalsCount() {
+  try {
+    proposals = (await rpc('list_proposals', { p_password: password })) || [];
+    updateProposalsBtnLabel();
+  } catch {
+    // Compteur indicatif : erreur ignorée.
+  }
+}
+
+function updateProposalsBtnLabel() {
+  els.proposalsBtn.textContent = proposals.length > 0
+    ? `Modifications proposées (${proposals.length})`
+    : 'Modifications proposées';
+}
+
+async function loadProposals() {
+  proposals = (await rpc('list_proposals', { p_password: password })) || [];
+  updateProposalsBtnLabel();
+  renderProposals();
+}
+
+function diffTableCell(className, value) {
+  const td = document.createElement('td');
+  if (className) td.className = className;
+  td.textContent = value ?? '—';
+  return td;
+}
+
+function renderProposals() {
+  els.proposalsList.textContent = '';
+  if (proposals.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = 'Aucune proposition en attente.';
+    els.proposalsList.appendChild(p);
+    return;
+  }
+
+  for (const prop of proposals) {
+    const member = findMember(prop.member_id);
+    const card = document.createElement('div');
+    card.className = 'proposal-card';
+
+    const head = document.createElement('div');
+    head.className = 'proposal-head';
+    const title = document.createElement('strong');
+    title.textContent = prop.member_name || 'Membre introuvable';
+    head.appendChild(title);
+    const meta = document.createElement('span');
+    meta.className = 'proposal-meta';
+    meta.textContent = `proposé par ${prop.proposed_by} le ${new Date(prop.created_at).toLocaleString('fr-FR')}`;
+    head.appendChild(meta);
+
+    const acceptBtn = document.createElement('button');
+    acceptBtn.type = 'button';
+    acceptBtn.className = 'primary';
+    acceptBtn.textContent = 'Accepter';
+    acceptBtn.addEventListener('click', () => decideProposal(prop, true, acceptBtn, rejectBtn));
+    const rejectBtn = document.createElement('button');
+    rejectBtn.type = 'button';
+    rejectBtn.className = 'danger';
+    rejectBtn.textContent = 'Refuser';
+    rejectBtn.addEventListener('click', () => decideProposal(prop, false, acceptBtn, rejectBtn));
+    head.append(acceptBtn, rejectBtn);
+    card.appendChild(head);
+
+    const table = document.createElement('table');
+    table.className = 'diff-table';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    for (const label of ['Champ', 'Actuel', 'Proposé']) {
+      const th = document.createElement('th');
+      th.textContent = label;
+      headRow.appendChild(th);
+    }
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    if (!member) {
+      const tr = document.createElement('tr');
+      const td = diffTableCell('', 'Membre supprimé : proposition obsolète.');
+      td.colSpan = 3;
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    } else {
+      for (const [key, label] of PROPOSAL_FIELDS) {
+        const before = currentFieldValue(member, key);
+        const after = prop.payload[key] || null;
+        const changed = (before ?? '') !== (after ?? '');
+        const tr = document.createElement('tr');
+        if (changed) tr.className = 'diff-row';
+        tr.appendChild(diffTableCell('diff-label', label));
+        tr.appendChild(diffTableCell(changed ? 'diff-old' : '', formatProposalValue(key, before)));
+        tr.appendChild(diffTableCell(changed ? 'diff-new' : '', formatProposalValue(key, after)));
+        tbody.appendChild(tr);
+      }
+    }
+    table.appendChild(tbody);
+    card.appendChild(table);
+    els.proposalsList.appendChild(card);
+  }
+}
+
+async function decideProposal(prop, accept, acceptBtn, rejectBtn) {
+  acceptBtn.disabled = true;
+  rejectBtn.disabled = true;
+  try {
+    if (accept) {
+      await rpc('accept_proposal', { p_password: password, p_proposal_id: prop.id });
+    } else {
+      await rpc('reject_proposal', { p_password: password, p_proposal_id: prop.id });
+    }
+    await loadMembers();
+    await loadProposals();
+    showGlobalSuccess(accept ? 'Modifications acceptées et appliquées.' : 'Proposition refusée.');
+  } catch (err) {
+    showError(els.proposalsError, err.message);
+    acceptBtn.disabled = false;
+    rejectBtn.disabled = false;
   }
 }
 
@@ -641,8 +904,24 @@ els.toggleUsersBtn.addEventListener('click', async () => {
   if (els.usersSection.hidden) {
     await loadUsers();
     els.usersSection.hidden = false;
+    els.proposalsSection.hidden = true;
   } else {
     els.usersSection.hidden = true;
+  }
+});
+
+els.proposalsBtn.addEventListener('click', async () => {
+  clearError(els.proposalsError);
+  if (els.proposalsSection.hidden) {
+    try {
+      await loadProposals();
+      els.proposalsSection.hidden = false;
+      els.usersSection.hidden = true;
+    } catch (err) {
+      showError(els.proposalsError, err.message);
+    }
+  } else {
+    els.proposalsSection.hidden = true;
   }
 });
 
