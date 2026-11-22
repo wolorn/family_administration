@@ -31,6 +31,13 @@ adossé à une base Supabase.
 - Comptes utilisateurs avec deux rôles : `admin` (lecture + écriture + gestion des
   comptes) et `viewer` (lecture seule). Les écritures sont refusées côté serveur
   pour les non-admins, pas seulement cachées dans l'interface.
+- **Propositions de modification** : un utilisateur non admin peut ouvrir la fiche
+  d'un membre, cliquer « Proposer une modification » et corriger ou compléter les
+  champs. Rien n'est publié immédiatement : la proposition est stockée, un email
+  est envoyé aux administrateurs, et l'admin la retrouve dans « Modifications
+  proposées » sous forme de comparaison avant/après (ancienne valeur barrée en
+  rouge, valeur proposée en vert) avec boutons Accepter/Refuser. Accepter applique
+  les données et les relations (père, mère, conjoint) proposées.
 
 ## Sécurité
 
@@ -48,8 +55,9 @@ adossé à une base Supabase.
 1. **Créer le projet Supabase**
    - Créez un projet sur [supabase.com](https://supabase.com).
    - Ouvrez le *SQL Editor* et exécutez l'intégralité de `supabase/schema.sql`.
-   - Exécutez ensuite les migrations `supabase/migrations/02_family_name.sql`
-     puis `03_add_spouse.sql` (le nom de famille par défaut « Ma Famille » se
+   - Exécutez ensuite les migrations, dans l'ordre : `02_family_name.sql`,
+     `03_add_spouse.sql`, `04_grant_app_settings_anon.sql`,
+     `05_member_proposals.sql` (le nom de famille par défaut « Ma Famille » se
      change dans la table `app_settings` : `update app_settings set value = '…'
      where key = 'family_name';`).
 
@@ -77,6 +85,29 @@ Connectez-vous sur le site avec le compte `admin`, ouvrez « Utilisateurs » :
 vous pouvez y créer des comptes (lecture seule ou admin), changer un mot de passe,
 désactiver ou supprimer un compte.
 
+## Notifications email des propositions
+
+L'email envoyé aux administrateurs lors d'une proposition passe par une
+**fonction Edge** Supabase (`supabase/functions/notify-proposal`) qui utilise
+l'API [Resend](https://resend.com) (gratuit en petite quantité).
+
+Déploiement (Supabase CLI installée et projet lié) :
+
+```sh
+supabase functions deploy notify-proposal
+supabase secrets set RESEND_API_KEY=votre_cle_resend \
+  NOTIFY_FROM_EMAIL="Administration familiale <onboarding@resend.dev>" \
+  NOTIFY_TO_EMAILS="admin1@exemple.fr,admin2@exemple.fr"
+```
+
+`NOTIFY_FROM_EMAIL` : émetteur autorisé par Resend (en test,
+`onboarding@resend.dev` fonctionne ; configurez un domaine pour un vrai nom).
+`NOTIFY_TO_EMAILS` : adresses des administrateurs, séparées par des virgules.
+
+Si la fonction n'est pas déployée ou échoue, **la proposition reste tout de même
+enregistrée** et visible dans « Modifications proposées » : seuls l'email et
+l'invite de console sont perdus.
+
 ## Structure du projet
 
 ```
@@ -90,7 +121,9 @@ désactiver ou supprimer un compte.
 │   └── tree.js             Arbre généalogique SVG
 └── supabase/
     ├── schema.sql          Schema de référence (à exécuter une fois à l'installation)
-    └── migrations/         Modifications du schéma, un script numéroté par changement
+    ├── migrations/         Modifications du schéma, un script numéroté par changement
+    └── functions/
+        └── notify-proposal/  Fonction Edge : email aux admins (Resend)
 ```
 
 ## Évolution du schéma

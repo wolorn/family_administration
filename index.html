@@ -54,10 +54,12 @@
         </div>
         <div id="admin-actions" hidden>
           <button id="add-member-btn" type="button" class="primary">+ Ajouter un membre</button>
+          <button id="proposals-btn" type="button">Modifications proposées</button>
           <button id="toggle-users-btn" type="button">Utilisateurs</button>
         </div>
       </div>
       <p id="birthday-banner" class="birthday-banner" hidden></p>
+      <p id="global-success" class="global-success" hidden></p>
       <p id="global-error" class="error" hidden></p>
 
       <div class="table-wrap card">
@@ -99,6 +101,13 @@
         <p id="users-error" class="error" hidden></p>
       </section>
 
+      <!-- Modifications proposées (admin) -->
+      <section id="proposals-section" class="card" hidden>
+        <h2>Modifications proposées</h2>
+        <div id="proposals-list"></div>
+        <p id="proposals-error" class="error" hidden></p>
+      </section>
+
     </section>
   </main>
 
@@ -112,6 +121,9 @@
     <div id="member-admin-actions" hidden>
       <button id="edit-member-btn" type="button">Modifier</button>
       <button id="delete-member-btn" type="button" class="danger">Supprimer</button>
+    </div>
+    <div id="member-viewer-actions" hidden>
+      <button id="propose-btn" type="button" class="primary">Proposer une modification</button>
     </div>
     <p id="member-error" class="error" hidden></p>
   </dialog>
@@ -143,6 +155,9 @@
         <label>Conjoint <select id="f-conjoint"></select></label>
       </div>
       <p class="hint">Les frères et sœurs sont déduits automatiquement des parents.</p>
+      <p id="form-note" class="form-note" hidden>
+        Les modifications ne seront publiées qu'après validation par un administrateur.
+      </p>
       <p id="form-error" class="error" hidden></p>
       <div class="dialog-footer">
         <button type="submit" class="primary" id="form-submit">Enregistrer</button>
