@@ -1,0 +1,5 @@
+// Configuration de la connexion Supabase.
+// Remplacez les valeurs par celles de votre projet
+// (Dashboard Supabase -> Settings -> API).
+window.FAMILY_SUPABASE_URL = 'https://VOTRE-PROJET.supabase.co';
+window.FAMILY_SUPABASE_ANON_KEY = 'VOTRE_CLE_ANON';

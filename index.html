@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Administration familiale</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="js/config.js"></script>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <h1>Administration familiale</h1>
+      <div id="session-bar" hidden>
+        <span id="session-user" class="session-role"></span>
+        <button id="logout-btn" type="button">Se déconnecter</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- Connexion -->
+    <section id="login-section" class="card login-card">
+      <h2>Accès protégé</h2>
+      <p class="hint">Entrez le mot de passe de la famille pour consulter les données.</p>
+      <form id="login-form">
+        <label for="login-password">Mot de passe</label>
+        <input type="password" id="login-password" autocomplete="current-password" required>
+        <button type="submit" class="primary">Se connecter</button>
+        <p id="login-error" class="error" hidden></p>
+      </form>
+      <p id="config-error" class="error" hidden></p>
+    </section>
+
+    <!-- Application -->
+    <section id="app-section" hidden>
+
+      <div class="toolbar">
+        <input type="search" id="search-input"
+               placeholder="Rechercher sur tous les champs (nom, adresse, relation…)"
+               autocomplete="off">
+        <span id="count-label" class="hint"></span>
+        <div id="admin-actions" hidden>
+          <button id="add-member-btn" type="button" class="primary">+ Ajouter un membre</button>
+          <button id="toggle-users-btn" type="button">Utilisateurs</button>
+        </div>
+      </div>
+      <p id="global-error" class="error" hidden></p>
+
+      <div class="table-wrap card">
+        <table id="members-table">
+          <thead>
+            <tr>
+              <th>Prénom</th>
+              <th>Nom</th>
+              <th>Date de naissance</th>
+              <th>Âge</th>
+              <th id="th-actions" hidden></th>
+            </tr>
+          </thead>
+          <tbody id="members-tbody"></tbody>
+        </table>
+        <p id="empty-msg" class="hint" hidden>Aucun membre ne correspond à la recherche.</p>
+      </div>
+
+      <!-- Gestion des comptes (admin) -->
+      <section id="users-section" class="card" hidden>
+        <h2>Comptes utilisateurs</h2>
+        <table id="users-table">
+          <thead>
+            <tr><th>Identifiant</th><th>Rôle</th><th>Actif</th><th>Créé le</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+
+        <h3>Ajouter un compte</h3>
+        <form id="user-form" class="inline-form">
+          <input type="text" id="user-username" placeholder="Identifiant" required>
+          <input type="password" id="user-password" placeholder="Mot de passe (min. 8 caractères)" minlength="8" required>
+          <select id="user-role" required>
+            <option value="viewer">Lecture seule</option>
+            <option value="admin">Administrateur</option>
+          </select>
+          <button type="submit" class="primary">Créer</button>
+        </form>
+        <p id="users-error" class="error" hidden></p>
+      </section>
+
+    </section>
+  </main>
+
+  <!-- Fiche détaillée d'un membre -->
+  <dialog id="member-modal">
+    <div class="dialog-header">
+      <h2 id="member-modal-title">Fiche</h2>
+      <button type="button" class="close-btn" data-close="member-modal">×</button>
+    </div>
+    <div id="member-details"></div>
+    <div id="member-admin-actions" hidden>
+      <button id="edit-member-btn" type="button">Modifier</button>
+      <button id="delete-member-btn" type="button" class="danger">Supprimer</button>
+    </div>
+    <p id="member-error" class="error" hidden></p>
+  </dialog>
+
+  <!-- Formulaire d'ajout / modification -->
+  <dialog id="member-form-modal">
+    <div class="dialog-header">
+      <h2 id="member-form-title">Nouveau membre</h2>
+      <button type="button" class="close-btn" data-close="member-form-modal">×</button>
+    </div>
+    <form id="member-form">
+      <div class="form-grid">
+        <label>Prénom <input type="text" id="f-first-name" required></label>
+        <label>Nom <input type="text" id="f-last-name" required></label>
+        <label>Sexe
+          <select id="f-sex" required>
+            <option value="">—</option>
+            <option value="M">Masculin</option>
+            <option value="F">Féminin</option>
+          </select>
+        </label>
+        <label>Date de naissance <input type="date" id="f-birth-date" required></label>
+        <label>Adresse <input type="text" id="f-address"></label>
+        <label>Adresse email <input type="email" id="f-email"></label>
+        <label>Date de mariage <input type="date" id="f-wedding-date"></label>
+        <label>Date de décès <input type="date" id="f-death-date"></label>
+        <label>Père <select id="f-pere"></select></label>
+        <label>Mère <select id="f-mere"></select></label>
+      </div>
+      <p class="hint">Les frères et sœurs sont déduits automatiquement des parents.</p>
+      <p id="form-error" class="error" hidden></p>
+      <div class="dialog-footer">
+        <button type="submit" class="primary" id="form-submit">Enregistrer</button>
+        <button type="button" class="close-btn2" data-close="member-form-modal">Annuler</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
