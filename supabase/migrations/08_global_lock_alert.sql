@@ -122,6 +122,7 @@ declare
     'apikey', v_key,
     'Authorization', 'Bearer ' || v_key
   );
+begin
   -- La signature installée ici est
   -- http_post(url text, body jsonb, params jsonb, headers jsonb,
   --           timeout_milliseconds int) : aucun paramètre d'URL.
