@@ -14,7 +14,10 @@ adossé à une base Supabase.
 - Fiche détaillée par membre : nom, prénom, sexe, date de naissance, adresse, email,
   date de mariage (facultatif), date de décès (facultatif), relations.
 - Les relations sont modélisées par des liens parent → enfant ; les pères/mères et
-  enfants sont stockés, les frères et sœurs sont déduits automatiquement.
+  enfants sont stockés, les frères et sœurs sont déduits automatiquement. Le conjoint
+  est un lien symétrique, cohérencé automatiquement dans les deux sens.
+- Le nom de la famille à administrer est configurable (table `app_settings`, lecture
+  publique) et s'affiche en haut de la page, même avant connexion.
 - Comptes utilisateurs avec deux rôles : `admin` (lecture + écriture + gestion des
   comptes) et `viewer` (lecture seule). Les écritures sont refusées côté serveur
   pour les non-admins, pas seulement cachées dans l'interface.
@@ -35,6 +38,10 @@ adossé à une base Supabase.
 1. **Créer le projet Supabase**
    - Créez un projet sur [supabase.com](https://supabase.com).
    - Ouvrez le *SQL Editor* et exécutez l'intégralité de `supabase/schema.sql`.
+   - Exécutez ensuite les migrations `supabase/migrations/02_family_name.sql`
+     puis `03_add_spouse.sql` (le nom de famille par défaut « Ma Famille » se
+     change dans la table `app_settings` : `update app_settings set value = '…'
+     where key = 'family_name';`).
 
 2. **Changer les mots de passe initiaux**
    Dans le SQL Editor :

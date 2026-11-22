@@ -26,8 +26,8 @@ let members = [];
 const $ = (id) => document.getElementById(id);
 
 const els = {
-  loginSection: $('login-section'),
-  loginForm: $('login-form'),
+  familyName: $('family-name'),
+  loginSection: $('login-section'),  loginForm: $('login-form'),
   loginPassword: $('login-password'),
   loginError: $('login-error'),
   configError: $('config-error'),
@@ -127,6 +127,21 @@ function birthdayKey(member) {
   return [d.getMonth() + 1, d.getDate()];
 }
 
+async function loadFamilyName() {
+  if (!supabase) return;
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'family_name')
+    .maybeSingle();
+  if (error || !data || !data.value) {
+    els.familyName.textContent = 'Administration familiale';
+    return;
+  }
+  els.familyName.textContent = data.value;
+  document.title = `${data.value} — Administration familiale`;
+}
+
 // ------------------------------------------------------------
 // Session
 // ------------------------------------------------------------
@@ -187,7 +202,7 @@ function memberSearchText(member) {
     member.wedding_date,
     member.death_date,
   ];
-  for (const rel of ['parents', 'children', 'siblings']) {
+  for (const rel of ['parents', 'children', 'siblings', 'spouse']) {
     for (const r of member[rel] || []) {
       parts.push(r.first_name, r.last_name);
     }
@@ -326,6 +341,7 @@ function openMemberModal(id) {
     ['parents', 'Parents'],
     ['children', 'Enfants'],
     ['siblings', 'Frères et sœurs'],
+    ['spouse', 'Conjoint'],
   ]) {
     const group = relationItems(m, key, label);
     if (group) els.memberDetails.appendChild(group);
@@ -369,6 +385,23 @@ function parentsOf(member, sex) {
   return (member.parents || []).find((p) => p.sex === sex) || null;
 }
 
+function fillSpouseSelect(currentSpouseId, excludeId) {
+  const select = $('f-conjoint');
+  select.textContent = '';
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = '(aucun)';
+  select.appendChild(none);
+  for (const m of members) {
+    if (m.id === excludeId) continue;
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = `${m.first_name} ${m.last_name} (${formatDate(m.birth_date)})`;
+    if (m.id === currentSpouseId) opt.selected = true;
+    select.appendChild(opt);
+  }
+}
+
 function openMemberForm(member) {
   clearError(els.formError);
   els.formTitle.textContent = member ? 'Modifier le membre' : 'Nouveau membre';
@@ -385,6 +418,8 @@ function openMemberForm(member) {
   const mother = member ? parentsOf(member, 'F') : null;
   fillParentSelect('f-pere', father ? father.id : null, member ? member.id : null);
   fillParentSelect('f-mere', mother ? mother.id : null, member ? member.id : null);
+  const spouse = member && (member.spouse || [])[0];
+  fillSpouseSelect(spouse ? spouse.id : null, member ? member.id : null);
 
   els.formSubmit.textContent = member ? 'Enregistrer' : 'Créer';
   els.form.onsubmit = (e) => {
@@ -411,6 +446,8 @@ async function saveMember(existing) {
   const newMother = $('f-mere').value || null;
   const oldFather = existing ? (parentsOf(existing, 'M') || {}).id || null : null;
   const oldMother = existing ? (parentsOf(existing, 'F') || {}).id || null : null;
+  const newSpouse = $('f-conjoint').value || null;
+  const oldSpouse = existing && existing.spouse && existing.spouse[0] ? existing.spouse[0].id : null;
 
   try {
     els.formSubmit.disabled = true;
@@ -429,6 +466,13 @@ async function saveMember(existing) {
         p_child_id: memberId,
         p_parent_id: newMother,
         p_slot: 'mere',
+      });
+    }
+    if (newSpouse !== oldSpouse) {
+      await rpc('set_spouse', {
+        p_password: password,
+        p_member_id: memberId,
+        p_spouse_id: newSpouse,
       });
     }
     els.formModal.close();
@@ -587,6 +631,7 @@ async function init() {
     showError(els.configError, 'Supabase n\'est pas configuré. Éditez js/config.js (URL et clé anon).');
     return;
   }
+  await loadFamilyName();
   if (password) {
     try {
       await login(password);
