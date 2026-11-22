@@ -3,7 +3,8 @@
 -- À exécuter entièrement dans le SQL Editor de Supabase.
 -- ============================================================
 
-create extension if not exists pgcrypto;
+-- Sur Supabase, pgcrypto est installé dans le schéma "extensions".
+create extension if not exists pgcrypto with schema extensions;
 
 -- ------------------------------------------------------------
 -- Utilisateurs de l'application
@@ -70,7 +71,7 @@ returns text
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select role
   from app_users
@@ -85,7 +86,7 @@ returns json
 language plpgsql
 stable
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_role text;
@@ -151,7 +152,7 @@ returns uuid
 language plpgsql
 volatile
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_role  text;
@@ -213,7 +214,7 @@ returns void
 language plpgsql
 volatile
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if verify_password(p_password) is distinct from 'admin' then
@@ -229,7 +230,7 @@ returns void
 language plpgsql
 volatile
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_sex text;
@@ -293,7 +294,7 @@ returns json
 language plpgsql
 stable
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if verify_password(p_password) is distinct from 'admin' then
@@ -315,7 +316,7 @@ returns uuid
 language plpgsql
 volatile
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   v_role text;
@@ -354,7 +355,7 @@ returns void
 language plpgsql
 volatile
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if verify_password(p_password) is distinct from 'admin' then
@@ -381,7 +382,7 @@ returns void
 language plpgsql
 volatile
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if verify_password(p_password) is distinct from 'admin' then
@@ -403,7 +404,7 @@ returns void
 language plpgsql
 volatile
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if verify_password(p_password) is distinct from 'admin' then
