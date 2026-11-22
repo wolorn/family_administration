@@ -357,6 +357,40 @@ function relationItems(member, key, label) {
   return group;
 }
 
+// Adresse à afficher pour un membre : sa propre adresse, sinon celle
+// de son conjoint, sinon celle d'un parent pour un mineur. Renvoie
+// { address, source } ou null si aucune adresse n'est trouvée ; source
+// explique l'origine de l'adresse de substitution.
+function displayAddress(member) {
+  if (member.address) return { address: member.address, source: null };
+
+  const spouse = (member.spouse || [])[0];
+  if (spouse) {
+    const s = findMember(spouse.id);
+    if (s && s.address) {
+      return {
+        address: s.address,
+        source: `adresse de ${s.first_name} ${s.last_name}, conjoint`,
+      };
+    }
+  }
+
+  const MINOR_AGE = 18;
+  if ((ageOf(member) ?? Infinity) < MINOR_AGE) {
+    for (const p of member.parents || []) {
+      const pm = findMember(p.id);
+      if (pm && pm.address) {
+        return {
+          address: pm.address,
+          source: `adresse de ${pm.first_name} ${pm.last_name}, parent`,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
 function openMemberModal(id) {
   const m = findMember(id);
   if (!m) return;
@@ -367,15 +401,25 @@ function openMemberModal(id) {
 
   const dl = document.createElement('div');
   dl.className = 'detail-list';
+  // Adresse affichée : celle du membre, sinon celle du conjoint,
+  // ou du parent pour un mineur (jamais modifiée ici : le formulaire
+  // n'édite que l'adresse propre au membre).
+  const shownAddress = displayAddress(m);
   const rows = [
     { label: 'Sexe', value: SEX_LABEL[m.sex] || m.sex },
     { label: 'Naissance', value: formatDate(m.birth_date) },
-    { label: 'Adresse', value: m.address, href: m.address ? addressHref(m.address) : null, copy: m.address },
+    {
+      label: 'Adresse',
+      value: shownAddress ? shownAddress.address : null,
+      href: shownAddress ? addressHref(shownAddress.address) : null,
+      copy: shownAddress ? shownAddress.address : null,
+      note: shownAddress ? shownAddress.source : null,
+    },
     { label: 'Email', value: m.email, href: m.email ? `mailto:${m.email}` : null, copy: m.email },
     { label: 'Mariage', value: m.wedding_date ? formatDate(m.wedding_date) : null },
     { label: 'Décès', value: m.death_date ? formatDate(m.death_date) : null },
   ];
-  for (const { label, value, href, copy } of rows) {
+  for (const { label, value, href, copy, note } of rows) {
     if (value == null) continue;
     const row = document.createElement('div');
     const dt = document.createElement('dt');
@@ -389,6 +433,12 @@ function openMemberModal(id) {
       dd.appendChild(a);
     } else {
       dd.textContent = value;
+    }
+    if (note) {
+      const span = document.createElement('span');
+      span.className = 'address-source';
+      span.textContent = ` (${note})`;
+      dd.appendChild(span);
     }
     if (copy) {
       const copyBtn = document.createElement('button');
