@@ -198,27 +198,71 @@ function drawTree(members) {
     return -unit.unitWidth / 2 + anchor * (CARD_W + COUPLE_GAP) + CARD_W / 2;
   }
 
+  const anchorRank = (a) => (a === 'couple' ? 1 : a === 0 ? 0 : 2);
+
   for (const unit of units) {
     if (!unit.children.length) continue;
     const fromY = unitY(unit) + CARD_H;
-    const spanY = unitY(unit) + LEVEL_H - fromY;
-    // Chaque arête a sa propre hauteur de coude pour éviter que les
-    // segments horizontaux se superposent et fusionnent visuellement.
-    unit.children.forEach((c, i) => {
-      const childCard = cardById.get(c.ids[0]);
-      if (!childCard) return;
-      const fromX = unit.centerX + anchorRelX(unit, c.anchor);
-      const toX = c.centerX;
-      const toY = childCard.y;
-      const midY = fromY + spanY * ((i + 1) / (unit.children.length + 1));
+    const spanY = LEVEL_H - CARD_H;
+
+    // Regroupe les enfants par rattachement : chaque groupe partage
+    // un tronc horizontal unique d'où partent les descentes.
+    const groups = new Map();
+    for (const c of unit.children) {
+      const key = String(c.anchor);
+      if (!groups.has(key)) groups.set(key, { anchor: c.anchor, children: [] });
+      groups.get(key).children.push(c);
+    }
+    const ordered = [...groups.values()].sort(
+      (g1, g2) => anchorRank(g1.anchor) - anchorRank(g2.anchor)
+    );
+
+    ordered.forEach((group, gi) => {
+      const railY = fromY + spanY * ((gi + 1) / (ordered.length + 1));
       const variant =
-        c.anchor === 'couple' ? 'tree-edge-both' :
-        c.anchor === 0 ? 'tree-edge-a0' : 'tree-edge-a1';
+        group.anchor === 'couple' ? 'tree-edge-both' :
+        group.anchor === 0 ? 'tree-edge-a0' : 'tree-edge-a1';
+      const fromX = unit.centerX + anchorRelX(unit, group.anchor);
+      const childAnchors = group.children
+        .map((c) => {
+          const cc = cardById.get(c.ids[0]);
+          return cc ? { x: c.centerX, y: cc.y } : null;
+        })
+        .filter(Boolean);
+      if (childAnchors.length === 0) return;
+
+      if (childAnchors.length === 1) {
+        const { x, y } = childAnchors[0];
+        svg.appendChild(svgEl('path', {
+          d: `M ${fromX} ${fromY} L ${fromX} ${railY} L ${x} ${railY} L ${x} ${y}`,
+          fill: 'none',
+          class: 'tree-edge ' + variant,
+        }));
+        return;
+      }
+
+      const xs = childAnchors.map((c) => c.x);
+      const railMin = Math.min(fromX, ...xs);
+      const railMax = Math.max(fromX, ...xs);
+      const toY = childAnchors[0].y;
+
       svg.appendChild(svgEl('path', {
-        d: `M ${fromX} ${fromY} L ${fromX} ${midY} L ${toX} ${midY} L ${toX} ${toY}`,
+        d: `M ${fromX} ${fromY} L ${fromX} ${railY}`,
         fill: 'none',
         class: 'tree-edge ' + variant,
       }));
+      svg.appendChild(svgEl('path', {
+        d: `M ${railMin} ${railY} L ${railMax} ${railY}`,
+        fill: 'none',
+        class: 'tree-edge ' + variant,
+      }));
+      for (const { x, y } of childAnchors) {
+        svg.appendChild(svgEl('path', {
+          d: `M ${x} ${railY} L ${x} ${y}`,
+          fill: 'none',
+          class: 'tree-edge ' + variant,
+        }));
+      }
     });
   }
 
