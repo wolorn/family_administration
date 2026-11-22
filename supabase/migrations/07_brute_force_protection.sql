@@ -30,14 +30,27 @@ returns text
 language sql
 stable
 as $$
-  select coalesce((
-    select split_part(h->>'value', ',', 1)
-    from json_array_elements(
-      coalesce(current_setting('request.headers', true), '[]'::json)
-    ) as h
-    where lower(h->>'name') = 'x-forwarded-for'
-    limit 1
-  ), 'inconnu');
+  with hdr as (
+    select case
+      when current_setting('request.headers', true) is null
+        or btrim(current_setting('request.headers', true)) = ''
+        then '[]'::json
+      else current_setting('request.headers', true)::json
+    end as h
+  )
+  select coalesce(
+    (select split_part(e->>'value', ',', 1)
+     from hdr, json_array_elements(hdr.h) e
+     where json_typeof(hdr.h) = 'array'
+       and lower(e->>'name') = 'x-forwarded-for'
+     limit 1),
+    (select split_part(kv.value, ',', 1)
+     from hdr, json_each_text(hdr.h) kv
+     where json_typeof(hdr.h) = 'object'
+       and lower(kv.key) = 'x-forwarded-for'
+     limit 1),
+    'inconnu'
+  );
 $$;
 
 -- Vérifie le mot de passe avec journalisation et verrou par IP.
