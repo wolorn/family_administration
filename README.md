@@ -53,10 +53,17 @@ adossé à une base Supabase.
   `upsert_member`, `set_parent`, …) : les tables sont protégées par RLS sans aucune
   policy, donc l'accès direct depuis le navigateur avec la clé anon est refusé.
 - Les mots de passe sont stockés hachés avec bcrypt (`pgcrypto`), jamais en clair.
+- **Protection anti brute-force** : chaque appel RPC vérifiant le mot de passe est
+  journalisé (`auth_attempts`) et deux verrous glissants s'appliquent — 10 échecs
+  en 15 minutes par adresse IP, et 5 échecs en 15 minutes par compte quand
+  l'identifiant est renseigné sur l'écran de connexion (champ optionnel :
+  conseillez-le aux comptes à mot de passe simple, comme l'accès « famille »).
+  Pendant le blocage, même un mot de passe correct est refusé ; un succès remet
+  le compteur à zéro. Les tentatives sont purgées après 2 jours.
 - Il ne peut jamais exister moins d'un compte administrateur actif.
-- Limitation connue : pas de anti brute-force natif sur les appels RPC PostgREST ;
-  utilisez des mots de passe longs et remplacez les mots de passe initiaux
-  immédiatement.
+- Limitation connue : le verrou par IP dépend de l'en-tête `X-Forwarded-For`
+  transmis par PostgREST ; s'il était absent, toutes les requêtes partageraient
+  le bucket « inconnu ». En pratique, Supabase le transmet systématiquement.
 
 ## Mise en place
 
@@ -65,7 +72,8 @@ adossé à une base Supabase.
    - Ouvrez le *SQL Editor* et exécutez l'intégralité de `supabase/schema.sql`.
    - Exécutez ensuite les migrations, dans l'ordre : `02_family_name.sql`,
      `03_add_spouse.sql`, `04_grant_app_settings_anon.sql`,
-     `05_member_proposals.sql`, `06_propose_new_members.sql` (le nom de famille
+     `05_member_proposals.sql`, `06_propose_new_members.sql`,
+     `07_brute_force_protection.sql` (le nom de famille
      par défaut « Ma Famille » se change dans la table `app_settings` :
      `update app_settings set value = '…' where key = 'family_name';`).
 

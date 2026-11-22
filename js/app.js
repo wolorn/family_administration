@@ -34,6 +34,7 @@ const $ = (id) => document.getElementById(id);
 const els = {
   familyName: $('family-name'),
   loginSection: $('login-section'),  loginForm: $('login-form'),
+  loginUsername: $('login-username'),
   loginPassword: $('login-password'),
   loginError: $('login-error'),
   configError: $('config-error'),
@@ -132,12 +133,16 @@ async function loadFamilyName() {
 // ------------------------------------------------------------
 // Session
 // ------------------------------------------------------------
-async function login(pwd) {
-  const verified = await rpc('verify_password', { p_password: pwd });
+async function login(pwd, username = '') {
+  const verified = await rpc('verify_login', {
+    p_username: username || null,
+    p_password: pwd,
+  });
   if (!verified) throw new Error('Mot de passe invalide.');
   role = verified;
   password = pwd;
   sessionStorage.setItem('family_admin_password', pwd);
+  sessionStorage.setItem('family_admin_username', username);
   await loadMembers();
   showApp();
 }
@@ -151,6 +156,7 @@ function logout() {
   els.sessionBar.hidden = true;
   els.loginSection.hidden = false;
   els.loginPassword.value = '';
+  sessionStorage.removeItem('family_admin_username');
   proposals = [];
   els.proposalsSection.hidden = true;
 }
@@ -988,12 +994,14 @@ els.loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   clearError(els.loginError);
   els.loginPassword.disabled = true;
+  els.loginUsername.disabled = true;
   try {
-    await login(els.loginPassword.value);
+    await login(els.loginPassword.value, els.loginUsername.value.trim());
   } catch (err) {
     showError(els.loginError, err.message);
   } finally {
     els.loginPassword.disabled = false;
+    els.loginUsername.disabled = false;
   }
 });
 
@@ -1094,11 +1102,13 @@ async function init() {
   }
   await loadFamilyName();
   if (password) {
+    const savedUsername = sessionStorage.getItem('family_admin_username') || '';
     try {
-      await login(password);
+      await login(password, savedUsername);
       return;
     } catch {
       sessionStorage.removeItem('family_admin_password');
+      sessionStorage.removeItem('family_admin_username');
       password = '';
     }
   }
