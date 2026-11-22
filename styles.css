@@ -38,6 +38,18 @@ h1 { font-size: 1.2rem; margin: 0; }
 h2 { font-size: 1.05rem; margin-top: 0; }
 h3 { font-size: 0.95rem; margin-bottom: 0.4rem; }
 
+.family-name {
+  display: block;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.page-subtitle {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 main {
   max-width: 1100px;
   margin: 1.5rem auto;

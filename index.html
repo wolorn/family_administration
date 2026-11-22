@@ -12,7 +12,10 @@
 
   <header>
     <div class="header-inner">
-      <h1>Administration familiale</h1>
+      <div>
+        <span id="family-name" class="family-name">Chargement…</span>
+        <span class="page-subtitle">Administration familiale</span>
+      </div>
       <div id="session-bar" hidden>
         <span id="session-user" class="session-role"></span>
         <button id="logout-btn" type="button">Se déconnecter</button>
@@ -130,6 +133,7 @@
         <label>Date de décès <input type="date" id="f-death-date"></label>
         <label>Père <select id="f-pere"></select></label>
         <label>Mère <select id="f-mere"></select></label>
+        <label>Conjoint <select id="f-conjoint"></select></label>
       </div>
       <p class="hint">Les frères et sœurs sont déduits automatiquement des parents.</p>
       <p id="form-error" class="error" hidden></p>
