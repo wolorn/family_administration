@@ -122,25 +122,17 @@ declare
     'apikey', v_key,
     'Authorization', 'Bearer ' || v_key
   );
-  -- Certaines versions de pg_net déclarent http_post avec des
-  -- paramètres json et non jsonb : on détecte le type réel de "body".
-  v_kind    text;
-begin
+  -- La signature installée ici est
+  -- http_post(url text, body jsonb, params jsonb, headers jsonb,
+  --           timeout_milliseconds int) : aucun paramètre d'URL.
   begin
-    select split_part((string_to_array(pg_get_function_arguments(p.oid), ', '))[2], ' ', 2)
-      into v_kind
-    from pg_proc p
-    join pg_namespace n on p.pronamespace = n.oid
-    where n.nspname = 'net'
-      and p.proname = 'http_post'
-      and position('timeout_milliseconds' in pg_get_function_identity_arguments(p.oid)) > 0
-    limit 1;
-
-    if coalesce(v_kind, '') = 'json' then
-      perform net.http_post(v_url, v_body::json, 5000, v_headers::json);
-    else
-      perform net.http_post(v_url, v_body, 5000, v_headers);
-    end if;
+    perform net.http_post(
+      v_url,
+      v_body,
+      '{}'::jsonb,
+      v_headers,
+      5000
+    );
   exception when others then
     null; -- l'alerte ne doit jamais bloquer la protection
   end;
