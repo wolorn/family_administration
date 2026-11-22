@@ -223,10 +223,12 @@ function drawTree(members) {
         group.anchor === 'couple' ? 'tree-edge-both' :
         group.anchor === 0 ? 'tree-edge-a0' : 'tree-edge-a1';
       const fromX = unit.centerX + anchorRelX(unit, group.anchor);
+      // Le trait atterrit sur la carte du membre lui-même (pas le
+      // centre de son couple) : seul le membre déclaré enfant est ciblé.
       const childAnchors = group.children
         .map((c) => {
           const cc = cardById.get(c.ids[0]);
-          return cc ? { x: c.centerX, y: cc.y } : null;
+          return cc ? { x: cc.x + CARD_W / 2, y: cc.y } : null;
         })
         .filter(Boolean);
       if (childAnchors.length === 0) return;
