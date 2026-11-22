@@ -1,4 +1,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { parseDate, formatDate, todayISO, ageOf, SEX_LABEL, addressHref } from './utils.js';
+import { openExportModal } from './export.js';
+import { openTree, closeTree } from './tree.js';
 
 // ------------------------------------------------------------
 // Configuration et client Supabase
@@ -37,6 +40,13 @@ const els = {
   logoutBtn: $('logout-btn'),
   searchInput: $('search-input'),
   countLabel: $('count-label'),
+  readActions: $('read-actions'),
+  treeBtn: $('tree-btn'),
+  exportBtn: $('export-btn'),
+  copyEmailsBtn: $('copy-emails-btn'),
+  treeOverlay: $('tree-overlay'),
+  treeCloseBtn: $('tree-close-btn'),
+  birthdayBanner: $('birthday-banner'),
   adminActions: $('admin-actions'),
   addMemberBtn: $('add-member-btn'),
   toggleUsersBtn: $('toggle-users-btn'),
@@ -63,8 +73,6 @@ const els = {
   formSubmit: $('form-submit'),
 };
 
-const SEX_LABEL = { M: 'Masculin', F: 'Féminin' };
-
 // ------------------------------------------------------------
 // Appel RPC générique : chaque requête porte le mot de passe.
 // ------------------------------------------------------------
@@ -85,39 +93,6 @@ function showError(element, message) {
 
 function clearError(element) {
   element.hidden = true;
-}
-
-// ------------------------------------------------------------
-// Utilitaires dates / âge
-// ------------------------------------------------------------
-function parseDate(iso) {
-  if (!iso) return null;
-  const [y, m, d] = iso.split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
-
-function formatDate(iso) {
-  const d = parseDate(iso);
-  if (!d) return '—';
-  return d.toLocaleDateString('fr-FR');
-}
-
-function todayISO() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-function ageOf(member) {
-  const birth = parseDate(member.birth_date);
-  if (!birth) return null;
-  const ref = parseDate(member.death_date) || parseDate(todayISO());
-  let age = ref.getFullYear() - birth.getFullYear();
-  const beforeBirthday =
-    ref.getMonth() < birth.getMonth() ||
-    (ref.getMonth() === birth.getMonth() && ref.getDate() < birth.getDate());
-  if (beforeBirthday) age--;
-  return Math.max(age, 0);
 }
 
 // Tri par jour de l'année de naissance (anniversaires).
@@ -173,7 +148,9 @@ function showApp() {
   els.sessionUser.textContent = role === 'admin' ? 'Connecté : administrateur' : 'Connecté : lecture seule';
   const isAdmin = role === 'admin';
   els.adminActions.hidden = !isAdmin;
+  els.readActions.hidden = false;
   els.thActions.hidden = !isAdmin;
+  updateSortIndicators();
   renderTable();
 }
 
@@ -184,11 +161,83 @@ function showGlobalError(message) {
 async function loadMembers() {
   members = (await rpc('get_members', { p_password: password })) || [];
   renderTable();
+  renderBirthdayBanner();
 }
 
 // ------------------------------------------------------------
-// Tableau principal (tri par anniversaire + recherche)
+// Anniversaires du jour
 // ------------------------------------------------------------
+function renderBirthdayBanner() {
+  const today = parseDate(todayISO());
+  const md = (d) =>
+    `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const todayMd = md(today);
+  const leap = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const names = [];
+  for (const m of members) {
+    if (m.death_date) continue;
+    const b = parseDate(m.birth_date);
+    if (!b) continue;
+    const bMd = md(b);
+    // Le 29 février est fêté le 28 les années non bissextiles.
+    const match =
+      bMd === todayMd ||
+      (!leap(today.getFullYear()) && todayMd === '02-28' && bMd === '02-29');
+    if (match) names.push(`${m.first_name} ${m.last_name} (${ageOf(m)} ans)`);
+  }
+  if (names.length === 0) {
+    els.birthdayBanner.hidden = true;
+    return;
+  }
+  const listed = names.length > 1 ? names.slice(0, -1).join(', ') + ' et ' + names.at(-1) : names[0];
+  els.birthdayBanner.textContent = `Joyeux anniversaire à ${listed} !`;
+  els.birthdayBanner.hidden = false;
+}
+
+// ------------------------------------------------------------
+// Tableau principal : tri par colonne + recherche
+// ------------------------------------------------------------
+
+const tieBreak = (a, b) =>
+  a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name);
+
+const sorters = {
+  birthday: (a, b) => {
+    const ka = birthdayKey(a);
+    const kb = birthdayKey(b);
+    return (ka[0] - kb[0]) || (ka[1] - kb[1]) || tieBreak(a, b);
+  },
+  first_name: (a, b) => a.first_name.localeCompare(b.first_name) || tieBreak(a, b),
+  last_name: (a, b) => a.last_name.localeCompare(b.last_name) || tieBreak(a, b),
+  birth_date: (a, b) =>
+    (a.birth_date || '').localeCompare(b.birth_date || '') || tieBreak(a, b),
+  age: (a, b) => ((ageOf(a) ?? -1) - (ageOf(b) ?? -1)) || tieBreak(a, b),
+};
+
+let sortState = { key: 'birthday', dir: 1 };
+
+function updateSortIndicators() {
+  for (const th of document.querySelectorAll('#members-table th.sortable')) {
+    const key = th.dataset.sort;
+    const ind = th.querySelector('.sort-ind');
+    if (key === sortState.key) {
+      ind.textContent = sortState.dir === 1 ? ' ↑' : ' ↓';
+      th.setAttribute('aria-sort', sortState.dir === 1 ? 'ascending' : 'descending');
+    } else {
+      ind.textContent = '';
+      th.removeAttribute('aria-sort');
+    }
+  }
+}
+
+function getVisibleMembers() {
+  const query = els.searchInput.value.trim().toLowerCase();
+  const sorted = [...members].sort((a, b) => sorters[sortState.key](a, b) * sortState.dir);
+  return query
+    ? sorted.filter((m) => memberSearchText(m).includes(query))
+    : sorted;
+}
+
 function memberSearchText(member) {
   const parts = [
     member.first_name,
@@ -202,26 +251,11 @@ function memberSearchText(member) {
     member.wedding_date,
     member.death_date,
   ];
-  for (const rel of ['parents', 'children', 'siblings', 'spouse']) {
-    for (const r of member[rel] || []) {
-      parts.push(r.first_name, r.last_name);
-    }
-  }
   return parts.filter(Boolean).join(' ').toLowerCase();
 }
 
 function renderTable() {
-  const query = els.searchInput.value.trim().toLowerCase();
-  const sorted = [...members].sort((a, b) => {
-    const ka = birthdayKey(a);
-    const kb = birthdayKey(b);
-    if (ka[0] !== kb[0]) return ka[0] - kb[0];
-    if (ka[1] !== kb[1]) return ka[1] - kb[1];
-    return a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name);
-  });
-  const visible = query
-    ? sorted.filter((m) => memberSearchText(m).includes(query))
-    : sorted;
+  const visible = getVisibleMembers();
 
   els.tbody.textContent = '';
   for (const m of visible) {
@@ -318,20 +352,41 @@ function openMemberModal(id) {
   const dl = document.createElement('div');
   dl.className = 'detail-list';
   const rows = [
-    ['Sexe', SEX_LABEL[m.sex] || m.sex],
-    ['Naissance', formatDate(m.birth_date)],
-    ['Adresse', m.address],
-    ['Email', m.email],
-    ['Mariage', m.wedding_date ? formatDate(m.wedding_date) : null],
-    ['Décès', m.death_date ? formatDate(m.death_date) : null],
+    { label: 'Sexe', value: SEX_LABEL[m.sex] || m.sex },
+    { label: 'Naissance', value: formatDate(m.birth_date) },
+    { label: 'Adresse', value: m.address, href: m.address ? addressHref(m.address) : null, copy: m.address },
+    { label: 'Email', value: m.email, href: m.email ? `mailto:${m.email}` : null, copy: m.email },
+    { label: 'Mariage', value: m.wedding_date ? formatDate(m.wedding_date) : null },
+    { label: 'Décès', value: m.death_date ? formatDate(m.death_date) : null },
   ];
-  for (const [label, value] of rows) {
+  for (const { label, value, href, copy } of rows) {
     if (value == null) continue;
     const row = document.createElement('div');
     const dt = document.createElement('dt');
     const dd = document.createElement('dd');
     dt.textContent = label;
-    dd.textContent = value;
+    if (href) {
+      const a = document.createElement('a');
+      a.href = href;
+      a.textContent = value;
+      a.className = 'detail-link';
+      dd.appendChild(a);
+    } else {
+      dd.textContent = value;
+    }
+    if (copy) {
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'copy-mini';
+      copyBtn.textContent = 'Copier';
+      copyBtn.addEventListener('click', async () => {
+        const ok = await copyToClipboard(copy);
+        copyBtn.textContent = ok ? 'Copié !' : 'Erreur';
+        setTimeout(() => { copyBtn.textContent = 'Copier'; }, 1500);
+      });
+      dd.appendChild(document.createTextNode(' '));
+      dd.appendChild(copyBtn);
+    }
     row.append(dt, dd);
     dl.appendChild(row);
   }
@@ -609,6 +664,76 @@ els.loginForm.addEventListener('submit', async (e) => {
 
 els.logoutBtn.addEventListener('click', logout);
 els.addMemberBtn.addEventListener('click', () => openMemberForm(null));
+
+// Colonnes triables
+for (const th of document.querySelectorAll('#members-table th.sortable')) {
+  th.addEventListener('click', () => {
+    const key = th.dataset.sort;
+    if (sortState.key === key) {
+      sortState.dir = -sortState.dir;
+    } else {
+      sortState = { key, dir: 1 };
+    }
+    updateSortIndicators();
+    renderTable();
+  });
+}
+
+// Copie presse-papier avec repli si l'API est indisponible.
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+// Copie de la liste de diffusion email
+els.copyEmailsBtn.addEventListener('click', async () => {
+  const emails = [...new Set(getVisibleMembers().map((m) => m.email).filter(Boolean))];
+  if (emails.length === 0) {
+    alert('Aucune adresse email à copier.');
+    return;
+  }
+  const ok = await copyToClipboard(emails.join('; '));
+  if (!ok) {
+    alert('La copie a échoué.');
+    return;
+  }
+  const original = els.copyEmailsBtn.textContent;
+  els.copyEmailsBtn.textContent = 'Copié !';
+  els.copyEmailsBtn.disabled = true;
+  setTimeout(() => {
+    els.copyEmailsBtn.textContent = original;
+    els.copyEmailsBtn.disabled = false;
+  }, 2000);
+});
+
+els.exportBtn.addEventListener('click', () => openExportModal(getVisibleMembers()));
+els.treeBtn.addEventListener('click', () => openTree(members));
+els.treeCloseBtn.addEventListener('click', closeTree);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !els.treeOverlay.hidden) closeTree();
+});
+
+// Clic sur une carte de l'arbre : ouverture de la fiche.
+window.openMemberRecord = (id) => {
+  closeTree();
+  openMemberModal(id);
+};
 
 for (const btn of document.querySelectorAll('[data-close]')) {
   btn.addEventListener('click', () => {

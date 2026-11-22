@@ -7,6 +7,7 @@
   <title>Administration familiale</title>
   <link rel="stylesheet" href="styles.css">
   <script src="js/config.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -43,24 +44,30 @@
 
       <div class="toolbar">
         <input type="search" id="search-input"
-               placeholder="Rechercher sur tous les champs (nom, adresse, relation…)"
+               placeholder="Rechercher (nom, prénom, adresse, email, dates…)"
                autocomplete="off">
         <span id="count-label" class="hint"></span>
+        <div id="read-actions" hidden>
+          <button id="tree-btn" type="button">Arbre généalogique</button>
+          <button id="export-btn" type="button">Exporter</button>
+          <button id="copy-emails-btn" type="button">Copier les emails</button>
+        </div>
         <div id="admin-actions" hidden>
           <button id="add-member-btn" type="button" class="primary">+ Ajouter un membre</button>
           <button id="toggle-users-btn" type="button">Utilisateurs</button>
         </div>
       </div>
+      <p id="birthday-banner" class="birthday-banner" hidden></p>
       <p id="global-error" class="error" hidden></p>
 
       <div class="table-wrap card">
         <table id="members-table">
           <thead>
             <tr>
-              <th>Prénom</th>
-              <th>Nom</th>
-              <th>Date de naissance</th>
-              <th>Âge</th>
+              <th class="sortable" data-sort="first_name">Prénom <span class="sort-ind"></span></th>
+              <th class="sortable" data-sort="last_name">Nom <span class="sort-ind"></span></th>
+              <th class="sortable" data-sort="birth_date">Date de naissance <span class="sort-ind"></span></th>
+              <th class="sortable" data-sort="age">Âge <span class="sort-ind"></span></th>
               <th id="th-actions" hidden></th>
             </tr>
           </thead>
@@ -145,5 +152,49 @@
   </dialog>
 
   <script type="module" src="js/app.js"></script>
+
+  <!-- Arbre généalogique (plein écran) -->
+  <div id="tree-overlay" hidden>
+    <div class="tree-bar">
+      <h2>Arbre généalogique</h2>
+      <div class="tree-legend">
+        <span class="legend-item"><span class="legend-line legend-a0"></span> enfant du parent de gauche</span>
+        <span class="legend-item"><span class="legend-line legend-a1"></span> enfant du parent de droite</span>
+        <span class="legend-item"><span class="legend-line legend-both"></span> enfant du couple</span>
+      </div>
+      <div class="tree-zoom">
+        <button id="zoom-out-btn" type="button" title="Zoom arrière">−</button>
+        <button id="zoom-reset-btn" type="button" title="Ajuster à l'écran">Ajuster</button>
+        <button id="zoom-in-btn" type="button" title="Zoom avant">+</button>
+        <button id="tree-close-btn" type="button">Fermer</button>
+      </div>
+    </div>
+    <div id="tree-viewport" class="tree-viewport">
+      <div id="tree-canvas" class="tree-canvas"></div>
+    </div>
+    <p id="tree-empty" class="hint" hidden>Aucune donnée à afficher.</p>
+  </div>
+
+  <!-- Export -->
+  <dialog id="export-modal">
+    <div class="dialog-header">
+      <h2>Exporter les membres</h2>
+      <button type="button" class="close-btn" data-close="export-modal">×</button>
+    </div>
+    <div class="modal-body">
+      <p id="export-count" class="hint"></p>
+      <div id="export-fields" class="checkbox-grid"></div>
+      <fieldset class="radio-group">
+        <legend>Format</legend>
+        <label class="checkbox-label"><input type="radio" name="export-format" value="xlsx" checked> Excel (.xlsx)</label>
+        <label class="checkbox-label"><input type="radio" name="export-format" value="word"> Word (.doc)</label>
+      </fieldset>
+      <p id="export-error" class="error" hidden></p>
+      <div class="dialog-footer">
+        <button type="button" class="primary" id="export-submit">Exporter</button>
+        <button type="button" class="close-btn2" data-close="export-modal">Annuler</button>
+      </div>
+    </div>
+  </dialog>
 </body>
 </html>

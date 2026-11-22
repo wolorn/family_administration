@@ -9,8 +9,18 @@ adossé à une base Supabase.
   vers la base transporte le mot de passe, vérifié côté serveur (bcrypt) à chaque appel.
 - Tableau principal de tous les membres, triés par jour de l'année de naissance
   (anniversaires) : prénom, nom, date de naissance, âge.
-- Barre de recherche portant sur **tous les champs** d'un membre, y compris les noms
-  des membres liés (parents, enfants, frères et sœurs).
+- Barre de recherche portant sur **tous les champs** d'un membre (adresse, dates,
+  email…). Les relations ne déclenchent pas de résultat.
+- Colonnes du tableau triables (clic sur l'en-tête, tri croissant/décroissant) ;
+  tri par défaut : jour de l'année de naissance.
+- Bouton d'export (Excel `.xlsx` ou Word `.doc`) avec choix des champs à inclure ;
+  l'export respecte la recherche courante.
+- Bouton « Arbre généalogique » : graphe SVG construit à partir des liens
+  parent/enfant et des conjoints (clic sur une carte = ouverture de la fiche).
+- Adresses cliquables vers une carte (geo: sur Android, Maps sur iOS, Google Maps
+  sur ordinateur) et emails cliquables en `mailto:`.
+- Bouton « Copier les emails » : liste de diffusion des membres affichés.
+- Bandeau de vœux les jours d'anniversaire des membres vivants.
 - Fiche détaillée par membre : nom, prénom, sexe, date de naissance, adresse, email,
   date de mariage (facultatif), date de décès (facultatif), relations.
 - Les relations sont modélisées par des liens parent → enfant ; les pères/mères et
@@ -70,11 +80,14 @@ désactiver ou supprimer un compte.
 ## Structure du projet
 
 ```
-├── index.html              Page unique (connexion, tableau, fiches, comptes)
+├── index.html              Page unique (connexion, tableau, fiches, comptes, export, arbre)
 ├── styles.css
 ├── js/
 │   ├── config.js           URL et clé anon Supabase (à renseigner)
-│   └── app.js              Logique de l'application
+│   ├── app.js              Logique applicative
+│   ├── utils.js            Utilitaires partagés (dates, âge, liens carte/email)
+│   ├── export.js           Export xlsx / Word avec choix des champs
+│   └── tree.js             Arbre généalogique SVG
 └── supabase/
     ├── schema.sql          Schema de référence (à exécuter une fois à l'installation)
     └── migrations/         Modifications du schéma, un script numéroté par changement
