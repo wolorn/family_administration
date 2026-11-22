@@ -70,7 +70,7 @@ function drawTree(members) {
     const sortedChildIds = [...childIdSet]
       .map((cid) => byId.get(cid))
       .filter(Boolean)
-      .sort((a, b) => (b.birth_date || '').localeCompare(a.birth_date || ''))
+      .sort((a, b) => (a.birth_date || '').localeCompare(b.birth_date || ''))
       .map((c) => c.id);
     for (const cid of sortedChildIds) {
       const child = measure(cid, level + 1);
@@ -233,7 +233,7 @@ function openTree(members) {
     return;
   }
   empty.hidden = true;
-  enablePan(canvas);
+  enablePan(overlay, canvas);
   canvas.appendChild(svg);
   overlay.hidden = false;
 }
@@ -243,9 +243,11 @@ function closeTree() {
 }
 
 // Déplacement de l'arbre à la souris / au doigt (au lieu des ascenseurs).
-function enablePan(canvas) {
-  if (canvas.dataset.panEnabled) return;
-  canvas.dataset.panEnabled = 'true';
+// Le glissement est écouté sur l'élément qui défile réellement (scrollEl)
+// et déclenché depuis la zone de l'arbre (dragEl).
+function enablePan(scrollEl, dragEl) {
+  if (scrollEl.dataset.panEnabled) return;
+  scrollEl.dataset.panEnabled = 'true';
 
   let isDown = false;
   let moved = false;
@@ -254,40 +256,43 @@ function enablePan(canvas) {
   let scrollStartX = 0;
   let scrollStartY = 0;
 
-  canvas.addEventListener('pointerdown', (e) => {
+  scrollEl.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
+    // La barre de titre (bouton Fermer) ne déclenche pas de déplacement.
+    if (e.target.closest('.tree-bar')) return;
+    if (!e.target.closest('.tree-canvas')) return;
     isDown = true;
     moved = false;
     startX = e.clientX;
     startY = e.clientY;
-    scrollStartX = canvas.scrollLeft;
-    scrollStartY = canvas.scrollTop;
-    canvas.setPointerCapture(e.pointerId);
+    scrollStartX = scrollEl.scrollLeft;
+    scrollStartY = scrollEl.scrollTop;
+    scrollEl.setPointerCapture(e.pointerId);
   });
 
-  canvas.addEventListener('pointermove', (e) => {
+  scrollEl.addEventListener('pointermove', (e) => {
     if (!isDown) return;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     if (!moved && Math.hypot(dx, dy) > 5) {
       moved = true;
-      canvas.classList.add('panning');
+      dragEl.classList.add('panning');
     }
     if (moved) {
-      canvas.scrollLeft = scrollStartX - dx;
-      canvas.scrollTop = scrollStartY - dy;
+      scrollEl.scrollLeft = scrollStartX - dx;
+      scrollEl.scrollTop = scrollStartY - dy;
     }
   });
 
   const end = () => {
     isDown = false;
-    canvas.classList.remove('panning');
+    dragEl.classList.remove('panning');
   };
-  canvas.addEventListener('pointerup', end);
-  canvas.addEventListener('pointercancel', end);
+  scrollEl.addEventListener('pointerup', end);
+  scrollEl.addEventListener('pointercancel', end);
 
   // Un glissement ne doit pas déclencher le clic sur une carte.
-  canvas.addEventListener(
+  scrollEl.addEventListener(
     'click',
     (e) => {
       if (!moved) return;

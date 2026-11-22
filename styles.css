@@ -317,7 +317,7 @@ a.detail-link { color: var(--primary); }
 }
 .tree-bar h2 { margin: 0; }
 
-.tree-canvas { padding: 0.5rem; cursor: grab; user-select: none; }
+.tree-canvas { padding: 0.5rem; cursor: grab; user-select: none; touch-action: none; }
 .tree-canvas.panning { cursor: grabbing; }
 
 .tree-card {
