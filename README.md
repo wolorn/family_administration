@@ -54,12 +54,10 @@ adossé à une base Supabase.
   policy, donc l'accès direct depuis le navigateur avec la clé anon est refusé.
 - Les mots de passe sont stockés hachés avec bcrypt (`pgcrypto`), jamais en clair.
 - **Protection anti brute-force** : chaque appel RPC vérifiant le mot de passe est
-  journalisé (`auth_attempts`) et deux verrous glissants s'appliquent — 10 échecs
-  en 15 minutes par adresse IP, et 5 échecs en 15 minutes par compte quand
-  l'identifiant est renseigné sur l'écran de connexion (champ optionnel :
-  conseillez-le aux comptes à mot de passe simple, comme l'accès « famille »).
-  Pendant le blocage, même un mot de passe correct est refusé ; un succès remet
-  le compteur à zéro. Les tentatives sont purgées après 2 jours.
+  journalisé (`auth_attempts`) et un verrou glissant par adresse IP s'applique :
+  5 échecs en 15 minutes bloquent toute nouvelle tentative pendant le reste de la
+  fenêtre, même avec le bon mot de passe (message affiché avec le délai restant).
+  Un succès remet le compteur à zéro ; les tentatives sont purgées après 2 jours.
 - Il ne peut jamais exister moins d'un compte administrateur actif.
 - Limitation connue : le verrou par IP dépend de l'en-tête `X-Forwarded-For`
   transmis par PostgREST ; s'il était absent, toutes les requêtes partageraient
