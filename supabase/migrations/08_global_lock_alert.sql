@@ -109,25 +109,38 @@ as $$
 declare
   -- URL de la fonction et clé publique du projet (à ajuster si le
   -- projet change) : voyez js/config.js.
-  v_url text := 'https://bzpjyaajphhdtmdbugat.supabase.co/functions/v1/notify-lockout';
-  v_key text := 'sb_publishable_hXG9LBkkCzyFVrF6zKYAsg_0vSIOain';
+  v_url     text := 'https://bzpjyaajphhdtmdbugat.supabase.co/functions/v1/notify-lockout';
+  v_key     text := 'sb_publishable_hXG9LBkkCzyFVrF6zKYAsg_0vSIOain';
+  v_body    jsonb := jsonb_build_object(
+    'source', p_source,
+    'ip', p_ip,
+    'failures', p_failures,
+    'at', to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+  );
+  v_headers jsonb := jsonb_build_object(
+    'Content-Type', 'application/json',
+    'apikey', v_key,
+    'Authorization', 'Bearer ' || v_key
+  );
+  -- Certaines versions de pg_net déclarent http_post avec des
+  -- paramètres json et non jsonb : on détecte le type réel de "body".
+  v_kind    text;
 begin
   begin
-    perform net.http_post(
-      v_url,
-      jsonb_build_object(
-        'source', p_source,
-        'ip', p_ip,
-        'failures', p_failures,
-        'at', to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-      ),
-      5000,
-      jsonb_build_object(
-        'Content-Type', 'application/json',
-        'apikey', v_key,
-        'Authorization', 'Bearer ' || v_key
-      )
-    );
+    select split_part((string_to_array(pg_get_function_arguments(p.oid), ', '))[2], ' ', 2)
+      into v_kind
+    from pg_proc p
+    join pg_namespace n on p.pronamespace = n.oid
+    where n.nspname = 'net'
+      and p.proname = 'http_post'
+      and position('timeout_milliseconds' in pg_get_function_identity_arguments(p.oid)) > 0
+    limit 1;
+
+    if coalesce(v_kind, '') = 'json' then
+      perform net.http_post(v_url, v_body::json, 5000, v_headers::json);
+    else
+      perform net.http_post(v_url, v_body, 5000, v_headers);
+    end if;
   exception when others then
     null; -- l'alerte ne doit jamais bloquer la protection
   end;
