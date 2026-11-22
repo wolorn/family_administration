@@ -9,7 +9,7 @@ const CARD_H = 46;
 const COUPLE_GAP = 10;
 const UNIT_GAP = 30;
 const TREE_GAP = 50;
-const LEVEL_H = 120;
+const LEVEL_H = 150;
 const PADDING = 32;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -194,19 +194,22 @@ function drawTree(members) {
   for (const unit of units) {
     if (!unit.children.length) continue;
     const fromY = unitY(unit) + CARD_H;
-    for (const c of unit.children) {
+    const spanY = unitY(unit) + LEVEL_H - fromY;
+    // Chaque arête a sa propre hauteur de coude pour éviter que les
+    // segments horizontaux se superposent et fusionnent visuellement.
+    unit.children.forEach((c, i) => {
       const childCard = cardById.get(c.ids[0]);
-      if (!childCard) continue;
+      if (!childCard) return;
       const fromX = unit.centerX + anchorRelX(unit, c.anchor);
       const toX = c.centerX;
       const toY = childCard.y;
-      const midY = (fromY + toY) / 2;
+      const midY = fromY + spanY * ((i + 1) / (unit.children.length + 1));
       svg.appendChild(svgEl('path', {
         d: `M ${fromX} ${fromY} L ${fromX} ${midY} L ${toX} ${midY} L ${toX} ${toY}`,
         fill: 'none',
         class: 'tree-edge',
       }));
-    }
+    });
   }
 
   for (const card of cards) {
