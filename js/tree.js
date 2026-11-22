@@ -70,20 +70,27 @@ function drawTree(members) {
     const childrenOf0 = new Set(childIds.get(m0.id) || []);
     const childrenOf1 = m1 ? new Set(childIds.get(m1.id) || []) : null;
     const candidates = new Set([...childrenOf0, ...(childrenOf1 || [])]);
+    const anchorRank = { 0: 0, couple: 1, 1: 2 };
     const sortedChildren = [...candidates]
       .map((cid) => byId.get(cid))
       .filter(Boolean)
-      .sort((a, b) => (a.birth_date || '').localeCompare(b.birth_date || ''));
+      .map((child) => {
+        let anchor;
+        if (childrenOf1) {
+          if (childrenOf0.has(child.id) && childrenOf1.has(child.id)) anchor = 'couple';
+          else if (childrenOf0.has(child.id)) anchor = 0;
+          else anchor = 1;
+        } else {
+          anchor = 0;
+        }
+        return { child, anchor };
+      })
+      .sort((a, b) =>
+        anchorRank[a.anchor] - anchorRank[b.anchor] ||
+        (a.child.birth_date || '').localeCompare(b.child.birth_date || '')
+      );
 
-    for (const child of sortedChildren) {
-      let anchor;
-      if (childrenOf1) {
-        if (childrenOf0.has(child.id) && childrenOf1.has(child.id)) anchor = 'couple';
-        else if (childrenOf0.has(child.id)) anchor = 0;
-        else anchor = 1;
-      } else {
-        anchor = 0;
-      }
+    for (const { child, anchor } of sortedChildren) {
       const childUnit = measure(child.id, level + 1);
       if (childUnit) {
         childUnit.anchor = anchor;
