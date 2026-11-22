@@ -130,16 +130,19 @@ begin
           where r.parent_id = m.id
         ) as children,
         (
-          select coalesce(json_agg(distinct jsonb_build_object(
-            'id', s.id, 'first_name', s.first_name,
-            'last_name', s.last_name, 'sex', s.sex,
-            'birth_date', s.birth_date
-          )), '[]'::jsonb)::json
-          from relationships r1
-          join relationships r2 on r2.parent_id = r1.parent_id
-          join members s on s.id = r2.child_id
-          where r1.child_id = m.id
-            and r2.child_id <> m.id
+          select coalesce(json_agg(json_build_object(
+            'id', d.id, 'first_name', d.first_name,
+            'last_name', d.last_name, 'sex', d.sex,
+            'birth_date', d.birth_date
+          )), '[]'::json)
+          from (
+            select distinct s.id, s.first_name, s.last_name, s.sex, s.birth_date
+            from relationships r1
+            join relationships r2 on r2.parent_id = r1.parent_id
+            join members s on s.id = r2.child_id
+            where r1.child_id = m.id
+              and r2.child_id <> m.id
+          ) as d
         ) as siblings
       from members m
     ) as t
