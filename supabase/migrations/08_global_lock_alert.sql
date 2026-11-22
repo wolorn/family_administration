@@ -17,12 +17,36 @@
 -- À exécuter dans le SQL Editor de Supabase.
 -- ============================================================
 
--- pg_net : appels HTTP asynchrones depuis Postgres. L'extension est
--- relogeable : on la force dans le schéma "net" sinon elle peut se
--- retrouver dans "extensions" selon le search_path du SQL Editor.
+-- pg_net : appels HTTP asynchrones depuis Postgres. Le schéma "net"
+-- est créé par l'extension elle-même : ne surtout pas le pré-créer
+-- (erreur 55000 "schema net is not a member of extension pg_net").
 drop extension if exists pg_net;
-create schema if not exists net;
-create extension if not exists pg_net with schema net;
+drop schema if exists net cascade;
+create extension if not exists pg_net;
+
+-- Garde-fou : vérifier que la version installée supporte les
+-- en-têtes HTTP (arg "headers"), indispensables pour l'authentification
+-- de l'appel vers la fonction Edge.
+do $$
+declare
+  v_version text;
+begin
+  select coalesce(extversion, '(absente)') into v_version
+  from pg_extension where extname = 'pg_net';
+
+  if not exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on p.pronamespace = n.oid
+    where n.nspname = 'net'
+      and p.proname = 'http_post'
+      and position('timeout_milliseconds' in pg_get_function_identity_arguments(p.oid)) > 0
+  ) then
+    raise exception
+      'pg_net est trop ancien (version %) : net.http_post(url, body, timeout, headers) est indisponible.',
+      v_version;
+  end if;
+end $$;
 
 -- ------------------------------------------------------------
 -- Cette migration est AUTONOME : elle recrée le journal des
