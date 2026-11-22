@@ -414,47 +414,6 @@ a.detail-link { color: var(--primary); }
 .proposal-head button + button { margin-left: 0.5rem; }
 
 .diff-table {
-  width: 100
-/* Propositions de modification */
-.global-success {
-  background: #ecfdf5;
-  border: 1px solid #34d399;
-  color: #065f46;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  margin: 0.5rem 0;
-}
-
-.form-note {
-  background: #fffbeb;
-  border: 1px solid #fcd34d;
-  color: #92400e;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  font-size: 0.85rem;
-}
-
-.proposal-card {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
-  background: var(--card);
-}
-
-.proposal-head {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.5rem;
-}
-
-.proposal-meta { color: var(--muted); font-size: 0.85rem; }
-.proposal-head button { margin-left: auto; }
-.proposal-head button + button { margin-left: 0.5rem; }
-
-.diff-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
