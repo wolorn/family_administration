@@ -437,3 +437,6 @@ a.detail-link { color: var(--primary); }
   color: #15803d;
   font-weight: 600;
 }
+
+/* Adresse de substitution (conjoint / parent) */
+.address-source { color: var(--muted); font-size: 0.85em; }

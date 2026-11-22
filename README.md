@@ -19,6 +19,11 @@ adossé à une base Supabase.
   parent/enfant et des conjoints (clic sur une carte = ouverture de la fiche).
 - Adresses cliquables vers une carte (geo: sur Android, Maps sur iOS, Google Maps
   sur ordinateur) et emails cliquables en `mailto:`.
+- Adresse de substitution à l'affichage : si l'adresse postale d'un membre n'est
+  pas renseignée, sa fiche affiche celle de son conjoint ; pour un mineur, celle
+  d'un parent (texte grisé indiquant la provenance). Le formulaire d'édition ou
+  de proposition ne modifie que l'adresse propre au membre — jamais celle du
+  conjoint ou du parent.
 - Bouton « Copier les emails » : liste de diffusion des membres affichés.
 - Bandeau de vœux les jours d'anniversaire des membres vivants.
 - Fiche détaillée par membre : nom, prénom, sexe, date de naissance, adresse, email,
