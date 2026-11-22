@@ -61,20 +61,34 @@ function drawTree(members) {
     const ids = [m.id, spouse ? spouse.id : null].filter(Boolean);
     const unit = { ids, level, children: [], width: 0, unitWidth: 0, childrenWidth: 0, centerX: 0 };
 
-    // Enfants des deux membres de l'unité, dédupliqués et triés par
-    // date de naissance décroissante (de gauche à droite).
-    const childIdSet = new Set();
-    for (const id of ids) {
-      for (const cid of childIds.get(id) || []) childIdSet.add(cid);
-    }
-    const sortedChildIds = [...childIdSet]
+    // Rattachement des enfants : un enfant pend sous le couple
+    // uniquement s'il est déclaré enfant des DEUX conjoints ; sinon
+    // il pend sous le unique parent déclaré (index de carte 0 ou 1).
+    // Les enfants sont ordonnés du plus âgé au plus récent (gauche à droite).
+    const m0 = byId.get(ids[0]);
+    const m1 = ids[1] ? byId.get(ids[1]) : null;
+    const childrenOf0 = new Set(childIds.get(m0.id) || []);
+    const childrenOf1 = m1 ? new Set(childIds.get(m1.id) || []) : null;
+    const candidates = new Set([...childrenOf0, ...(childrenOf1 || [])]);
+    const sortedChildren = [...candidates]
       .map((cid) => byId.get(cid))
       .filter(Boolean)
-      .sort((a, b) => (a.birth_date || '').localeCompare(b.birth_date || ''))
-      .map((c) => c.id);
-    for (const cid of sortedChildIds) {
-      const child = measure(cid, level + 1);
-      if (child) unit.children.push(child);
+      .sort((a, b) => (a.birth_date || '').localeCompare(b.birth_date || ''));
+
+    for (const child of sortedChildren) {
+      let anchor;
+      if (childrenOf1) {
+        if (childrenOf0.has(child.id) && childrenOf1.has(child.id)) anchor = 'couple';
+        else if (childrenOf0.has(child.id)) anchor = 0;
+        else anchor = 1;
+      } else {
+        anchor = 0;
+      }
+      const childUnit = measure(child.id, level + 1);
+      if (childUnit) {
+        childUnit.anchor = anchor;
+        unit.children.push(childUnit);
+      }
     }
 
     unit.unitWidth = ids.length * CARD_W + (ids.length - 1) * COUPLE_GAP;
@@ -169,13 +183,21 @@ function drawTree(members) {
 
   const cardById = new Map(cards.map((c) => [c.m.id, c]));
 
+  // Position horizontale (relative au centre de l'unité) du point de
+  // départ d'une arête selon le rattachement : centre du couple ou
+  // carte du parent déclaré (0 ou 1).
+  function anchorRelX(unit, anchor) {
+    if (anchor === 'couple') return 0;
+    return -unit.unitWidth / 2 + anchor * (CARD_W + COUPLE_GAP) + CARD_W / 2;
+  }
+
   for (const unit of units) {
     if (!unit.children.length) continue;
-    const fromX = unit.centerX;
     const fromY = unitY(unit) + CARD_H;
     for (const c of unit.children) {
       const childCard = cardById.get(c.ids[0]);
       if (!childCard) continue;
+      const fromX = unit.centerX + anchorRelX(unit, c.anchor);
       const toX = c.centerX;
       const toY = childCard.y;
       const midY = (fromY + toY) / 2;
