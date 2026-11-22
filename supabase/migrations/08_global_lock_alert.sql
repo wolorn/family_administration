@@ -21,6 +21,43 @@
 -- Supabase ; l'exécution est un no-op s'il existe déjà).
 create extension if not exists pg_net;
 
+-- ------------------------------------------------------------
+-- Cette migration est AUTONOME : elle recrée le journal des
+-- tentatives, client_ip et le verrou par IP de la migration 07
+-- (create if not exists / or replace), puis ajoute le verrou global
+-- et l'alerte email. Elle peut donc être exécutée seule.
+-- ------------------------------------------------------------
+
+create table if not exists auth_attempts (
+  id           bigint generated always as identity primary key,
+  ip           text not null,
+  success      boolean not null,
+  attempted_at timestamptz not null default now()
+);
+
+alter table auth_attempts enable row level security;
+
+create index if not exists auth_attempts_ip_idx
+  on auth_attempts (ip, attempted_at);
+
+-- IP cliente : PostgREST transmet les en-têtes via le réglage
+-- 'request.headers' (X-Forwarded-For peut être une liste, première
+-- entrée = client réel). 'inconnu' si l'en-tête est absent.
+create or replace function client_ip()
+returns text
+language sql
+stable
+as $$
+  select coalesce((
+    select split_part(h->>'value', ',', 1)
+    from json_array_elements(
+      coalesce(current_setting('request.headers', true), '[]'::json)
+    ) as h
+    where lower(h->>'name') = 'x-forwarded-for'
+    limit 1
+  ), 'inconnu');
+$$;
+
 -- Envoi de l'alerte de blocage aux administrateurs.
 create or replace function notify_lockout_email(p_source text, p_ip text, p_failures int)
 returns void
