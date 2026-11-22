@@ -1085,6 +1085,34 @@ for (const dialog of document.querySelectorAll('dialog')) {
 }
 
 // ------------------------------------------------------------
+// Keep-alive : génère du trafic pour éviter la mise en pause de la
+// base gratuite (même stratégie que le projet "75 ans"). 50 pings
+// discrets au chargement de la page, sans bloquer le reste.
+// ------------------------------------------------------------
+const KEEPALIVE_PING_COUNT = 50;
+
+function getClientId() {
+  let id = localStorage.getItem('family_admin_client_id');
+  if (!id) {
+    id = crypto.randomUUID
+      ? crypto.randomUUID()
+      : `c-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem('family_admin_client_id', id);
+  }
+  return id;
+}
+
+function sendKeepAlive() {
+  if (!supabase) return;
+  const clientId = getClientId();
+  const calls = [];
+  for (let i = 0; i < KEEPALIVE_PING_COUNT; i++) {
+    calls.push(supabase.rpc('site_ping', { p_client_id: clientId }));
+  }
+  Promise.allSettled(calls).catch(() => {});
+}
+
+// ------------------------------------------------------------
 // Démarrage : session existante ou écran de connexion
 // ------------------------------------------------------------
 async function init() {
@@ -1092,6 +1120,7 @@ async function init() {
     showError(els.configError, 'Supabase n\'est pas configuré. Éditez js/config.js (URL et clé anon).');
     return;
   }
+  sendKeepAlive();
   await loadFamilyName();
   if (password) {
     try {

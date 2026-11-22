@@ -46,6 +46,14 @@ adossé à une base Supabase.
 - **Propositions d'ajout** : un utilisateur non admin peut aussi proposer la
   création d'un nouveau membre (« Proposer l'ajout d'un membre ») ; l'admin
   voit les champs proposés (tous en vert) et l'acceptation crée le membre.
+- **Anti brute-force renforcé** : au-delà du verrou par IP, un verrou global
+  (toutes IP confondues : 10 échecs en 15 minutes) bloque le site entier pour
+  tous les clients pendant le reste de la fenêtre — utile contre une attaque
+  répartie. Tout déclenchement de blocage envoie un email d'alerte aux
+  administrateurs (fonction Edge `notify-lockout`, appelée par pg_net).
+- **Keep-alive de la base** : au chargement de la page, le site envoie 50 pings
+  discrets (fonction `site_ping`, trace `traffic_logging`, purge > 1 jour) pour
+  éviter la mise en pause automatique de la base Supabase gratuite.
 
 ## Sécurité
 
@@ -54,10 +62,13 @@ adossé à une base Supabase.
   policy, donc l'accès direct depuis le navigateur avec la clé anon est refusé.
 - Les mots de passe sont stockés hachés avec bcrypt (`pgcrypto`), jamais en clair.
 - **Protection anti brute-force** : chaque appel RPC vérifiant le mot de passe est
-  journalisé (`auth_attempts`) et un verrou glissant par adresse IP s'applique :
-  5 échecs en 15 minutes bloquent toute nouvelle tentative pendant le reste de la
-  fenêtre, même avec le bon mot de passe (message affiché avec le délai restant).
-  Un succès remet le compteur à zéro ; les tentatives sont purgées après 2 jours.
+  journalisé (`auth_attempts`) avec trois niveaux — verrou par IP (5 échecs en
+  15 minutes), verrou global toutes IP (10 échecs en 15 minutes, contre les
+  attaques réparties). Pendant un blocage, même un mot de passe correct est
+  refusé (message affiché avec le délai restant) ; un succès remet le compteur
+  à zéro ; les tentatives sont purgées après 2 jours. Un blocage déclenche un
+  email d'alerte aux administrateurs via la fonction Edge `notify-lockout`
+  (pg_net depuis Postgres, comme `notify-proposal`).
 - Il ne peut jamais exister moins d'un compte administrateur actif.
 - Limitation connue : le verrou par IP dépend de l'en-tête `X-Forwarded-For`
   transmis par PostgREST ; s'il était absent, toutes les requêtes partageraient
@@ -71,7 +82,8 @@ adossé à une base Supabase.
    - Exécutez ensuite les migrations, dans l'ordre : `02_family_name.sql`,
      `03_add_spouse.sql`, `04_grant_app_settings_anon.sql`,
      `05_member_proposals.sql`, `06_propose_new_members.sql`,
-     `07_brute_force_protection.sql` (le nom de famille
+     `07_brute_force_protection.sql`, `08_global_lock_alert.sql`,
+     `09_traffic_keepalive.sql` (le nom de famille
      par défaut « Ma Famille » se change dans la table `app_settings` :
      `update app_settings set value = '…' where key = 'family_name';`).
 
@@ -99,11 +111,14 @@ Connectez-vous sur le site avec le compte `admin`, ouvrez « Utilisateurs » :
 vous pouvez y créer des comptes (lecture seule ou admin), changer un mot de passe,
 désactiver ou supprimer un compte.
 
-## Notifications email des propositions
+## Notifications email (propositions et alertes de blocage)
 
-L'email envoyé aux administrateurs lors d'une proposition passe par une
-**fonction Edge** Supabase (`supabase/functions/notify-proposal`) qui envoie
-les messages en SMTP via votre compte Proton Mail.
+Deux fonctions Edge envoient des emails en SMTP via votre compte Proton Mail :
+
+- `notify-proposal` : email aux admins lors d'une proposition de modification/ajout
+  (invoquée depuis le navigateur après enregistrement) ;
+- `notify-lockout` : alerte quand un blocage anti brute-force se déclenche
+  (invoquée depuis Postgres par pg_net, migration `08_global_lock_alert.sql`).
 
 Pré-requis côté Proton : créez un **jeton SMTP** (Proton Mail →
 *Tous les réglages → IMAP/SMTP → Jetons SMTP → Générer*) et notez le nom
@@ -113,6 +128,7 @@ Déploiement (Supabase CLI installée et projet lié) :
 
 ```sh
 supabase functions deploy notify-proposal
+supabase functions deploy notify-lockout
 supabase secrets set SMTP_USER="nom_utilisateur_du_jeton" \
   SMTP_PASS="mot_de_passe_du_jeton" \
   NOTIFY_FROM_EMAIL="vous@exemple.fr" \
@@ -132,7 +148,8 @@ function → Via Dashboard*, collez le code puis onglet *Secrets* de la fonction
 
 Si la fonction n'est pas déployée ou échoue, **la proposition reste tout de même
 enregistrée** et visible dans « Modifications proposées » : seul l'email est
-perdu.
+perdu. De même, la protection anti brute-force reste active même si
+`notify-lockout` n'est pas déployée (seule l'alerte email manque).
 
 ## Structure du projet
 
@@ -149,7 +166,8 @@ perdu.
     ├── schema.sql          Schema de référence (à exécuter une fois à l'installation)
     ├── migrations/         Modifications du schéma, un script numéroté par changement
     └── functions/
-        └── notify-proposal/  Fonction Edge : email aux admins (Resend)
+        ├── notify-proposal/  Fonction Edge : email aux admins (prop. de modif)
+        └── notify-lockout/   Fonction Edge : alerte email (blocage brute-force)
 ```
 
 ## Évolution du schéma
