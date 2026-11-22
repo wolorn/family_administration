@@ -295,15 +295,42 @@ dialog::backdrop { background: rgba(15, 23, 42, 0.45); }
 
 a.detail-link { color: var(--primary); }
 
+.copy-mini {
+  font-size: 0.72rem;
+  padding: 0.15rem 0.45rem;
+  color: var(--muted);
+}
+
 /* Arbre généalogique */
 #tree-overlay {
   position: fixed;
   inset: 0;
   background: var(--bg);
   z-index: 60;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 #tree-overlay[hidden] { display: none; }
+
+.tree-zoom { display: flex; gap: 0.4rem; }
+
+.tree-viewport {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.tree-viewport.panning { cursor: grabbing; }
+
+.tree-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  padding: 8px;
+}
 
 .tree-bar {
   position: sticky;
@@ -317,8 +344,7 @@ a.detail-link { color: var(--primary); }
 }
 .tree-bar h2 { margin: 0; }
 
-.tree-canvas { padding: 0.5rem; cursor: grab; user-select: none; touch-action: none; }
-.tree-canvas.panning { cursor: grabbing; }
+.tree-canvas svg { display: block; }
 
 .tree-card {
   fill: var(--card);

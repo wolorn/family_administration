@@ -354,12 +354,12 @@ function openMemberModal(id) {
   const rows = [
     { label: 'Sexe', value: SEX_LABEL[m.sex] || m.sex },
     { label: 'Naissance', value: formatDate(m.birth_date) },
-    { label: 'Adresse', value: m.address, href: m.address ? addressHref(m.address) : null },
-    { label: 'Email', value: m.email, href: m.email ? `mailto:${m.email}` : null },
+    { label: 'Adresse', value: m.address, href: m.address ? addressHref(m.address) : null, copy: m.address },
+    { label: 'Email', value: m.email, href: m.email ? `mailto:${m.email}` : null, copy: m.email },
     { label: 'Mariage', value: m.wedding_date ? formatDate(m.wedding_date) : null },
     { label: 'Décès', value: m.death_date ? formatDate(m.death_date) : null },
   ];
-  for (const { label, value, href } of rows) {
+  for (const { label, value, href, copy } of rows) {
     if (value == null) continue;
     const row = document.createElement('div');
     const dt = document.createElement('dt');
@@ -373,6 +373,19 @@ function openMemberModal(id) {
       dd.appendChild(a);
     } else {
       dd.textContent = value;
+    }
+    if (copy) {
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'copy-mini';
+      copyBtn.textContent = 'Copier';
+      copyBtn.addEventListener('click', async () => {
+        const ok = await copyToClipboard(copy);
+        copyBtn.textContent = ok ? 'Copié !' : 'Erreur';
+        setTimeout(() => { copyBtn.textContent = 'Copier'; }, 1500);
+      });
+      dd.appendChild(document.createTextNode(' '));
+      dd.appendChild(copyBtn);
     }
     row.append(dt, dd);
     dl.appendChild(row);
@@ -666,6 +679,28 @@ for (const th of document.querySelectorAll('#members-table th.sortable')) {
   });
 }
 
+// Copie presse-papier avec repli si l'API est indisponible.
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 // Copie de la liste de diffusion email
 els.copyEmailsBtn.addEventListener('click', async () => {
   const emails = [...new Set(getVisibleMembers().map((m) => m.email).filter(Boolean))];
@@ -673,16 +708,10 @@ els.copyEmailsBtn.addEventListener('click', async () => {
     alert('Aucune adresse email à copier.');
     return;
   }
-  const text = emails.join('; ');
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const area = document.createElement('textarea');
-    area.value = text;
-    document.body.appendChild(area);
-    area.select();
-    document.execCommand('copy');
-    area.remove();
+  const ok = await copyToClipboard(emails.join('; '));
+  if (!ok) {
+    alert('La copie a échoué.');
+    return;
   }
   const original = els.copyEmailsBtn.textContent;
   els.copyEmailsBtn.textContent = 'Copié !';

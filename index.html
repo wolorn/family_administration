@@ -157,9 +157,16 @@
   <div id="tree-overlay" hidden>
     <div class="tree-bar">
       <h2>Arbre généalogique</h2>
-      <button id="tree-close-btn" type="button">Fermer</button>
+      <div class="tree-zoom">
+        <button id="zoom-out-btn" type="button" title="Zoom arrière">−</button>
+        <button id="zoom-reset-btn" type="button" title="Ajuster à l'écran">Ajuster</button>
+        <button id="zoom-in-btn" type="button" title="Zoom avant">+</button>
+        <button id="tree-close-btn" type="button">Fermer</button>
+      </div>
     </div>
-    <div id="tree-canvas" class="tree-canvas"></div>
+    <div id="tree-viewport" class="tree-viewport">
+      <div id="tree-canvas" class="tree-canvas"></div>
+    </div>
     <p id="tree-empty" class="hint" hidden>Aucune donnée à afficher.</p>
   </div>
 

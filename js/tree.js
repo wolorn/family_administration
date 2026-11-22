@@ -218,6 +218,7 @@ function drawTree(members) {
 
 function openTree(members) {
   const overlay = document.getElementById('tree-overlay');
+  const viewport = document.getElementById('tree-viewport');
   const canvas = document.getElementById('tree-canvas');
   const empty = document.getElementById('tree-empty');
   canvas.textContent = '';
@@ -232,67 +233,128 @@ function openTree(members) {
     overlay.hidden = false;
     return;
   }
+  if (!navInitialized) {
+    initTreeNav();
+    navInitialized = true;
+  }
   empty.hidden = true;
-  enablePan(overlay, canvas);
+  viewEls.svgWidth = parseFloat(svg.getAttribute('width'));
+  viewEls.svgHeight = parseFloat(svg.getAttribute('height'));
   canvas.appendChild(svg);
   overlay.hidden = false;
+  // Le viewport doit être mesuré une fois l'overlay affiché.
+  fitView();
 }
 
 function closeTree() {
   document.getElementById('tree-overlay').hidden = true;
 }
 
-// Déplacement de l'arbre à la souris / au doigt (au lieu des ascenseurs).
-// Le glissement est écouté sur l'élément qui défile réellement (scrollEl)
-// et déclenché depuis la zone de l'arbre (dragEl).
-function enablePan(scrollEl, dragEl) {
-  if (scrollEl.dataset.panEnabled) return;
-  scrollEl.dataset.panEnabled = 'true';
+// ------------------------------------------------------------
+// Navigation : conteneur de taille fixe, pas d'ascenseur.
+// Le canvas est déplacé (translation) et zoomé via transform.
+// ------------------------------------------------------------
+const MIN_SCALE = 0.15;
+const MAX_SCALE = 4;
+
+const viewState = { x: 0, y: 0, scale: 1 };
+let viewEls = null; // { viewport, canvas, svgWidth, svgHeight }
+let navInitialized = false;
+
+function applyView() {
+  const { canvas } = viewEls;
+  canvas.style.transform =
+    `translate(${viewState.x}px, ${viewState.y}px) scale(${viewState.scale})`;
+}
+
+function fitView() {
+  const { viewport, svgWidth, svgHeight } = viewEls;
+  const vw = viewport.clientWidth;
+  const vh = viewport.clientHeight;
+  if (svgWidth === 0 || svgHeight === 0 || vw === 0) return;
+  // Ajuster à l'écran, sans dépasser l'échelle 1.
+  const scale = Math.min(1, (vw - 40) / svgWidth, (vh - 40) / svgHeight);
+  viewState.scale = Math.max(scale, MIN_SCALE);
+  viewState.x = (vw - svgWidth * viewState.scale) / 2;
+  viewState.y = (vh - svgHeight * viewState.scale) / 2;
+  applyView();
+}
+
+function zoomAt(cx, cy, factor) {
+  const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, viewState.scale * factor));
+  if (next === viewState.scale) return;
+  const k = next / viewState.scale;
+  viewState.x = cx - (cx - viewState.x) * k;
+  viewState.y = cy - (cy - viewState.y) * k;
+  viewState.scale = next;
+  applyView();
+}
+
+function initTreeNav() {
+  const viewport = document.getElementById('tree-viewport');
+  const canvas = document.getElementById('tree-canvas');
+  viewEls = { viewport, canvas, svgWidth: 0, svgHeight: 0 };
+
+  document.getElementById('zoom-in-btn').addEventListener('click', () => {
+    zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 1.25);
+  });
+  document.getElementById('zoom-out-btn').addEventListener('click', () => {
+    zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 1 / 1.25);
+  });
+  document.getElementById('zoom-reset-btn').addEventListener('click', fitView);
+
+  viewport.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    zoomAt(
+      e.clientX - rect.left,
+      e.clientY - rect.top,
+      e.deltaY < 0 ? 1.15 : 1 / 1.15
+    );
+  }, { passive: false });
 
   let isDown = false;
   let moved = false;
   let startX = 0;
   let startY = 0;
-  let scrollStartX = 0;
-  let scrollStartY = 0;
+  let viewStartX = 0;
+  let viewStartY = 0;
 
-  scrollEl.addEventListener('pointerdown', (e) => {
+  viewport.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
-    // La barre de titre (bouton Fermer) ne déclenche pas de déplacement.
-    if (e.target.closest('.tree-bar')) return;
-    if (!e.target.closest('.tree-canvas')) return;
     isDown = true;
     moved = false;
     startX = e.clientX;
     startY = e.clientY;
-    scrollStartX = scrollEl.scrollLeft;
-    scrollStartY = scrollEl.scrollTop;
-    scrollEl.setPointerCapture(e.pointerId);
+    viewStartX = viewState.x;
+    viewStartY = viewState.y;
+    viewport.setPointerCapture(e.pointerId);
   });
 
-  scrollEl.addEventListener('pointermove', (e) => {
+  viewport.addEventListener('pointermove', (e) => {
     if (!isDown) return;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     if (!moved && Math.hypot(dx, dy) > 5) {
       moved = true;
-      dragEl.classList.add('panning');
+      viewport.classList.add('panning');
     }
     if (moved) {
-      scrollEl.scrollLeft = scrollStartX - dx;
-      scrollEl.scrollTop = scrollStartY - dy;
+      viewState.x = viewStartX + dx;
+      viewState.y = viewStartY + dy;
+      applyView();
     }
   });
 
   const end = () => {
     isDown = false;
-    dragEl.classList.remove('panning');
+    viewport.classList.remove('panning');
   };
-  scrollEl.addEventListener('pointerup', end);
-  scrollEl.addEventListener('pointercancel', end);
+  viewport.addEventListener('pointerup', end);
+  viewport.addEventListener('pointercancel', end);
 
   // Un glissement ne doit pas déclencher le clic sur une carte.
-  scrollEl.addEventListener(
+  viewport.addEventListener(
     'click',
     (e) => {
       if (!moved) return;
