@@ -219,3 +219,145 @@ begin
 
   return v_role;
 end $$;
+
+-- ============================================================
+-- Recréation des fonctions de lecture en VOLATILE
+--
+-- La nouvelle verify_password (07) journalise les tentatives de
+-- connexion dans auth_attempts (INSERT / DELETE). PostgREST exécute
+-- les fonctions STABLE dans une transaction read-only, ce qui fait
+-- échouer la journalisation (erreur 25006). Ces fonctions ne
+-- téléphonent qu'à verify_password puis lisent : passer en VOLATILE
+-- est sans risque fonctionnel et rend la transaction inscriptible.
+-- ============================================================
+
+create or replace function get_members(p_password text)
+returns json
+language plpgsql
+volatile
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_role text;
+begin
+  v_role := verify_password(p_password);
+  if v_role is null then
+    raise exception 'Mot de passe invalide';
+  end if;
+
+  return (
+    select coalesce(json_agg(t), '[]'::json)
+    from (
+      select
+        m.id,
+        m.last_name,
+        m.first_name,
+        m.sex,
+        m.birth_date,
+        m.address,
+        m.email,
+        m.wedding_date,
+        m.death_date,
+        (
+          select coalesce(json_agg(json_build_object(
+            'id', p.id, 'first_name', p.first_name,
+            'last_name', p.last_name, 'sex', p.sex,
+            'birth_date', p.birth_date
+          )), '[]'::json)
+          from relationships r
+          join members p on p.id = r.parent_id
+          where r.child_id = m.id
+        ) as parents,
+        (
+          select coalesce(json_agg(json_build_object(
+            'id', c.id, 'first_name', c.first_name,
+            'last_name', c.last_name, 'sex', c.sex,
+            'birth_date', c.birth_date
+          )), '[]'::json)
+          from relationships r
+          join members c on c.id = r.child_id
+          where r.parent_id = m.id
+        ) as children,
+        (
+          select coalesce(json_agg(json_build_object(
+            'id', d.id, 'first_name', d.first_name,
+            'last_name', d.last_name, 'sex', d.sex,
+            'birth_date', d.birth_date
+          )), '[]'::json)
+          from (
+            select distinct s.id, s.first_name, s.last_name, s.sex, s.birth_date
+            from relationships r1
+            join relationships r2 on r2.parent_id = r1.parent_id
+            join members s on s.id = r2.child_id
+            where r1.child_id = m.id
+              and r2.child_id <> m.id
+          ) as d
+        ) as siblings,
+        (
+          select coalesce(json_agg(json_build_object(
+            'id', s.id, 'first_name', s.first_name,
+            'last_name', s.last_name, 'sex', s.sex,
+            'birth_date', s.birth_date
+          )), '[]'::json)
+          from members s
+          where s.id = m.spouse_id
+             or s.spouse_id = m.id
+        ) as spouse
+      from members m
+    ) as t
+  );
+end $$;
+
+create or replace function list_users(p_password text)
+returns json
+language plpgsql
+volatile
+security definer
+set search_path = public, extensions
+as $$
+begin
+  if verify_password(p_password) is distinct from 'admin' then
+    raise exception 'Action réservée aux administrateurs';
+  end if;
+  return coalesce(
+    (select json_agg(t)
+     from (
+       select id, username, role, is_active, created_at
+       from app_users
+       order by username
+     ) as t),
+    '[]'::json
+  );
+end $$;
+
+create or replace function list_proposals(p_password text)
+returns json
+language plpgsql
+volatile
+security definer
+set search_path = public, extensions
+as $$
+begin
+  if verify_password(p_password) is distinct from 'admin' then
+    raise exception 'Action réservée aux administrateurs';
+  end if;
+
+  return coalesce((
+    select json_agg(json_build_object(
+      'id', p.id,
+      'member_id', p.member_id,
+      'member_name', coalesce(
+        m.first_name || ' ' || m.last_name,
+        (p.payload->>'first_name') || ' ' || (p.payload->>'last_name'),
+        'Nouveau membre'
+      ),
+      'proposed_by', p.proposed_by,
+      'payload', p.payload,
+      'created_at', p.created_at
+    ) order by p.created_at)
+    from member_proposals p
+    left join members m on m.id = p.member_id
+    where p.status = 'pending'
+  ), '[]'::json);
+end $$;
