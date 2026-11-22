@@ -21,6 +21,7 @@
 -- relogeable : on la force dans le schéma "net" sinon elle peut se
 -- retrouver dans "extensions" selon le search_path du SQL Editor.
 drop extension if exists pg_net;
+create schema if not exists net;
 create extension if not exists pg_net with schema net;
 
 -- ------------------------------------------------------------
