@@ -17,9 +17,11 @@
 -- À exécuter dans le SQL Editor de Supabase.
 -- ============================================================
 
--- pg_net : appels HTTP asynchrones depuis Postgres (pré-installé sur
--- Supabase ; l'exécution est un no-op s'il existe déjà).
-create extension if not exists pg_net;
+-- pg_net : appels HTTP asynchrones depuis Postgres. L'extension est
+-- relogeable : on la force dans le schéma "net" sinon elle peut se
+-- retrouver dans "extensions" selon le search_path du SQL Editor.
+drop extension if exists pg_net;
+create extension if not exists pg_net with schema net;
 
 -- ------------------------------------------------------------
 -- Cette migration est AUTONOME : elle recrée le journal des
