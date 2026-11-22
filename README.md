@@ -88,25 +88,37 @@ désactiver ou supprimer un compte.
 ## Notifications email des propositions
 
 L'email envoyé aux administrateurs lors d'une proposition passe par une
-**fonction Edge** Supabase (`supabase/functions/notify-proposal`) qui utilise
-l'API [Resend](https://resend.com) (gratuit en petite quantité).
+**fonction Edge** Supabase (`supabase/functions/notify-proposal`) qui envoie
+les messages en SMTP via votre compte Proton Mail.
+
+Pré-requis côté Proton : créez un **jeton SMTP** (Proton Mail →
+*Tous les réglages → IMAP/SMTP → Jetons SMTP → Générer*) et notez le nom
+d'utilisateur et le mot de passe de ce jeton.
 
 Déploiement (Supabase CLI installée et projet lié) :
 
 ```sh
 supabase functions deploy notify-proposal
-supabase secrets set RESEND_API_KEY=votre_cle_resend \
-  NOTIFY_FROM_EMAIL="Administration familiale <onboarding@resend.dev>" \
+supabase secrets set SMTP_USER="nom_utilisateur_du_jeton" \
+  SMTP_PASS="mot_de_passe_du_jeton" \
+  NOTIFY_FROM_EMAIL="vous@exemple.fr" \
   NOTIFY_TO_EMAILS="admin1@exemple.fr,admin2@exemple.fr"
 ```
 
-`NOTIFY_FROM_EMAIL` : émetteur autorisé par Resend (en test,
-`onboarding@resend.dev` fonctionne ; configurez un domaine pour un vrai nom).
-`NOTIFY_TO_EMAILS` : adresses des administrateurs, séparées par des virgules.
+Secrets :
+- `SMTP_USER` / `SMTP_PASS` : identifiants du jeton SMTP Proton.
+- `SMTP_HOST` / `SMTP_PORT` : facultatifs (défauts Proton :
+  `smtp.protonmail.ch`, port `587`) — utiles si vous changez de fournisseur.
+- `NOTIFY_FROM_EMAIL` : émetteur ; doit être l'adresse de votre compte
+  Proton ou un de ses alias.
+- `NOTIFY_TO_EMAILS` : adresses des administrateurs, séparées par des virgules.
+
+L'équivalent est possible via le portail web : *Edge Functions → Create a new
+function → Via Dashboard*, collez le code puis onglet *Secrets* de la fonction.
 
 Si la fonction n'est pas déployée ou échoue, **la proposition reste tout de même
-enregistrée** et visible dans « Modifications proposées » : seuls l'email et
-l'invite de console sont perdus.
+enregistrée** et visible dans « Modifications proposées » : seul l'email est
+perdu.
 
 ## Structure du projet
 

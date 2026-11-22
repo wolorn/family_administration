@@ -1,19 +1,26 @@
 // ============================================================
 // Edge Function : notify-proposal
 //
-// Notifie les administrateurs par email (API Resend) lorsqu'une
-// proposition de modification est soumise. Appelée depuis le
-// navigateur avec supabase.functions.invoke('notify-proposal').
+// Notifie les administrateurs par email (SMTP, ex. Proton Mail)
+// lorsqu'une proposition de modification est soumise. Appelée
+// depuis le navigateur avec supabase.functions.invoke('notify-proposal').
 //
-// Déploiement :
+// Déploiement via CLI :
 //   supabase functions deploy notify-proposal
-//   supabase secrets set RESEND_API_KEY=... \
-//     NOTIFY_FROM_EMAIL="Administration familiale <onboarding@resend.dev>" \
+//   supabase secrets set SMTP_USER="jeton_smtp" \
+//     SMTP_PASS="mot_de_passe_du_jeton" \
+//     NOTIFY_FROM_EMAIL="famille@exemple.fr" \
 //     NOTIFY_TO_EMAILS="admin1@exemple.fr,admin2@exemple.fr"
 //
-// Si la fonction n'est pas déployée, la proposition reste
+// SMTP_HOST et SMTP_PORT sont facultatifs (défauts Proton :
+// smtp.protonmail.ch, 587). NOTIFY_FROM_EMAIL doit être une adresse
+// de votre compte Proton (ou un de ses alias).
+//
+// Si la fonction n'est pas déployée ou échoue, la proposition reste
 // enregistrée en base (le front ignore l'échec de notification).
 // ============================================================
+
+import nodemailer from 'npm:nodemailer@6.9.13';
 
 interface ProposalChange {
   field: string;
@@ -44,14 +51,15 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const resendApiKey = Deno.env.get('RESEND_API_KEY');
+  const smtpUser = Deno.env.get('SMTP_USER');
+  const smtpPass = Deno.env.get('SMTP_PASS');
   const fromEmail = Deno.env.get('NOTIFY_FROM_EMAIL');
   const toEmails = (Deno.env.get('NOTIFY_TO_EMAILS') ?? '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
 
-  if (!resendApiKey || !fromEmail || toEmails.length === 0) {
+  if (!smtpUser || !smtpPass || !fromEmail || toEmails.length === 0) {
     return new Response(
       JSON.stringify({ error: 'Notification non configurée (secrets manquants)' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -108,27 +116,21 @@ Deno.serve(async (req: Request) => {
       </p>
     </div>`;
 
+  const port = Number(Deno.env.get('SMTP_PORT') ?? '587');
+  const transporter = nodemailer.createTransport({
+    host: Deno.env.get('SMTP_HOST') ?? 'smtp.protonmail.ch',
+    port,
+    secure: port === 465,
+    auth: { user: smtpUser, pass: smtpPass },
+  });
+
   try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: toEmails,
-        subject: `Proposition de modification — ${member}`,
-        html,
-      }),
+    await transporter.sendMail({
+      from: fromEmail,
+      to: toEmails,
+      subject: `Proposition de modification — ${member}`,
+      html,
     });
-    if (!res.ok) {
-      const detail = await res.text();
-      return new Response(JSON.stringify({ error: detail }), {
-        status: 502,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
   } catch (err) {
     return new Response(
       JSON.stringify({ error: `Envoi impossible : ${String(err)}` }),
