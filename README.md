@@ -38,6 +38,9 @@ adossé à une base Supabase.
   proposées » sous forme de comparaison avant/après (ancienne valeur barrée en
   rouge, valeur proposée en vert) avec boutons Accepter/Refuser. Accepter applique
   les données et les relations (père, mère, conjoint) proposées.
+- **Propositions d'ajout** : un utilisateur non admin peut aussi proposer la
+  création d'un nouveau membre (« Proposer l'ajout d'un membre ») ; l'admin
+  voit les champs proposés (tous en vert) et l'acceptation crée le membre.
 
 ## Sécurité
 
@@ -57,9 +60,9 @@ adossé à une base Supabase.
    - Ouvrez le *SQL Editor* et exécutez l'intégralité de `supabase/schema.sql`.
    - Exécutez ensuite les migrations, dans l'ordre : `02_family_name.sql`,
      `03_add_spouse.sql`, `04_grant_app_settings_anon.sql`,
-     `05_member_proposals.sql` (le nom de famille par défaut « Ma Famille » se
-     change dans la table `app_settings` : `update app_settings set value = '…'
-     where key = 'family_name';`).
+     `05_member_proposals.sql`, `06_propose_new_members.sql` (le nom de famille
+     par défaut « Ma Famille » se change dans la table `app_settings` :
+     `update app_settings set value = '…' where key = 'family_name';`).
 
 2. **Changer les mots de passe initiaux**
    Dans le SQL Editor :

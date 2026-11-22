@@ -47,6 +47,7 @@ const els = {
   treeBtn: $('tree-btn'),
   exportBtn: $('export-btn'),
   copyEmailsBtn: $('copy-emails-btn'),
+  proposeAddBtn: $('propose-add-btn'),
   treeOverlay: $('tree-overlay'),
   treeCloseBtn: $('tree-close-btn'),
   birthdayBanner: $('birthday-banner'),
@@ -162,6 +163,7 @@ function showApp() {
   const isAdmin = role === 'admin';
   els.adminActions.hidden = !isAdmin;
   els.readActions.hidden = false;
+  els.proposeAddBtn.hidden = isAdmin;
   els.thActions.hidden = !isAdmin;
   updateSortIndicators();
   renderTable();
@@ -477,11 +479,13 @@ function fillSpouseSelect(currentSpouseId, excludeId) {
 }
 
 function openMemberForm(member, mode = 'edit') {
-  formMode = member ? mode : 'edit';
+  formMode = mode === 'proposal' ? 'proposal' : 'edit';
   clearError(els.formError);
   els.formNote.hidden = formMode !== 'proposal';
   if (formMode === 'proposal') {
-    els.formTitle.textContent = 'Proposer une modification';
+    els.formTitle.textContent = member
+      ? 'Proposer une modification'
+      : "Proposer l'ajout d'un membre";
   } else {
     els.formTitle.textContent = member ? 'Modifier le membre' : 'Nouveau membre';
   }
@@ -589,6 +593,7 @@ const RELATION_FIELDS = new Set(['pere', 'mere', 'spouse']);
 
 // Valeur brute actuelle d'un champ (ids de relations inclus).
 function currentFieldValue(member, key) {
+  if (!member) return null;
   if (key === 'pere') return parentsOf(member, 'M') ? parentsOf(member, 'M').id : null;
   if (key === 'mere') return parentsOf(member, 'F') ? parentsOf(member, 'F').id : null;
   if (key === 'spouse') return member.spouse && member.spouse[0] ? member.spouse[0].id : null;
@@ -623,7 +628,9 @@ function computeProposalChanges(member, payload) {
   return changes;
 }
 
-// Soumission d'une proposition par un utilisateur non admin.
+// Soumission d'une proposition (modification ou ajout) par un
+// utilisateur non admin. existing = membre concerné, null pour
+// une proposition de création.
 async function submitProposal(existing) {
   clearError(els.formError);
   const payload = {
@@ -645,7 +652,7 @@ async function submitProposal(existing) {
     els.formSubmit.disabled = true;
     const res = await rpc('submit_proposal', {
       p_password: password,
-      p_member_id: existing.id,
+      p_member_id: existing ? existing.id : null,
       p_proposal: payload,
     });
     // Notification email des admins : facultative, l'échec n'annule
@@ -663,7 +670,9 @@ async function submitProposal(existing) {
       console.warn('Notification admin non envoyée :', notifyErr);
     }
     els.formModal.close();
-    showGlobalSuccess('Proposition envoyée : elle sera visible après validation par un administrateur.');
+    showGlobalSuccess(existing
+      ? 'Proposition envoyée : elle sera visible après validation par un administrateur.'
+      : "Proposition d'ajout envoyée : le membre sera créé après validation par un administrateur.");
   } catch (err) {
     showError(els.formError, err.message);
   } finally {
@@ -725,7 +734,9 @@ function renderProposals() {
     const head = document.createElement('div');
     head.className = 'proposal-head';
     const title = document.createElement('strong');
-    title.textContent = prop.member_name || 'Membre introuvable';
+    title.textContent = prop.member_id
+      ? (prop.member_name || 'Membre introuvable')
+      : `Nouveau membre : ${prop.member_name}`;
     head.appendChild(title);
     const meta = document.createElement('span');
     meta.className = 'proposal-meta';
@@ -758,24 +769,19 @@ function renderProposals() {
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    if (!member) {
+    // member_id NULL = proposition de création : tout est "nouveau".
+    // Un member_id sans membre trouvé ne peut plus arriver (suppression
+    // en cascade), mais on protège le rendu quand même.
+    for (const [key, label] of PROPOSAL_FIELDS) {
+      const before = member ? currentFieldValue(member, key) : null;
+      const after = prop.payload[key] || null;
+      const changed = (before ?? '') !== (after ?? '');
       const tr = document.createElement('tr');
-      const td = diffTableCell('', 'Membre supprimé : proposition obsolète.');
-      td.colSpan = 3;
-      tr.appendChild(td);
+      if (changed) tr.className = 'diff-row';
+      tr.appendChild(diffTableCell('diff-label', label));
+      tr.appendChild(diffTableCell(changed ? 'diff-old' : '', formatProposalValue(key, before)));
+      tr.appendChild(diffTableCell(changed ? 'diff-new' : '', formatProposalValue(key, after)));
       tbody.appendChild(tr);
-    } else {
-      for (const [key, label] of PROPOSAL_FIELDS) {
-        const before = currentFieldValue(member, key);
-        const after = prop.payload[key] || null;
-        const changed = (before ?? '') !== (after ?? '');
-        const tr = document.createElement('tr');
-        if (changed) tr.className = 'diff-row';
-        tr.appendChild(diffTableCell('diff-label', label));
-        tr.appendChild(diffTableCell(changed ? 'diff-old' : '', formatProposalValue(key, before)));
-        tr.appendChild(diffTableCell(changed ? 'diff-new' : '', formatProposalValue(key, after)));
-        tbody.appendChild(tr);
-      }
     }
     table.appendChild(tbody);
     card.appendChild(table);
@@ -943,6 +949,7 @@ els.loginForm.addEventListener('submit', async (e) => {
 
 els.logoutBtn.addEventListener('click', logout);
 els.addMemberBtn.addEventListener('click', () => openMemberForm(null));
+els.proposeAddBtn.addEventListener('click', () => openMemberForm(null, 'proposal'));
 
 // Colonnes triables
 for (const th of document.querySelectorAll('#members-table th.sortable')) {
