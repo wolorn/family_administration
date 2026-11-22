@@ -401,18 +401,52 @@ function initTreeNav() {
   let viewStartX = 0;
   let viewStartY = 0;
 
+  // Suivi multi-pointeurs : 1 doigt = déplacement, 2 doigts = zoom par pincement.
+  const pointers = new Map();
+  let prevPinchDist = 0;
+
+  const pinchDistance = () => {
+    const [pa, pb] = [...pointers.values()];
+    return Math.hypot(pa.x - pb.x, pa.y - pb.y);
+  };
+
   viewport.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
-    isDown = true;
-    moved = false;
-    startX = e.clientX;
-    startY = e.clientY;
-    viewStartX = viewState.x;
-    viewStartY = viewState.y;
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      // Début du pincement : on neutralise le déplacement simple.
+      isDown = false;
+      moved = true;
+      viewport.classList.add('panning');
+      prevPinchDist = pinchDistance();
+    } else if (pointers.size === 1) {
+      isDown = true;
+      moved = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      viewStartX = viewState.x;
+      viewStartY = viewState.y;
+    }
     viewport.setPointerCapture(e.pointerId);
   });
 
   viewport.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointers.size >= 2) {
+      const dist = pinchDistance();
+      const [pa, pb] = [...pointers.values()];
+      const rect = viewport.getBoundingClientRect();
+      const midX = (pa.x + pb.x) / 2 - rect.left;
+      const midY = (pa.y + pb.y) / 2 - rect.top;
+      if (prevPinchDist > 0 && dist > 0) {
+        zoomAt(midX, midY, dist / prevPinchDist);
+      }
+      prevPinchDist = dist;
+      return;
+    }
+
     if (!isDown) return;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
@@ -427,9 +461,21 @@ function initTreeNav() {
     }
   });
 
-  const end = () => {
-    isDown = false;
-    viewport.classList.remove('panning');
+  const end = (e) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) prevPinchDist = 0;
+    if (pointers.size === 1) {
+      // Retour au déplacement simple avec le doigt restant.
+      const [only] = [...pointers.values()];
+      isDown = true;
+      startX = only.x;
+      startY = only.y;
+      viewStartX = viewState.x;
+      viewStartY = viewState.y;
+    } else {
+      isDown = false;
+      viewport.classList.remove('panning');
+    }
   };
   viewport.addEventListener('pointerup', end);
   viewport.addEventListener('pointercancel', end);
