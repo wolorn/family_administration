@@ -61,11 +61,20 @@ function drawTree(members) {
     const ids = [m.id, spouse ? spouse.id : null].filter(Boolean);
     const unit = { ids, level, children: [], width: 0, unitWidth: 0, childrenWidth: 0, centerX: 0 };
 
+    // Enfants des deux membres de l'unité, dédupliqués et triés par
+    // date de naissance décroissante (de gauche à droite).
+    const childIdSet = new Set();
     for (const id of ids) {
-      for (const childId of childIds.get(id) || []) {
-        const child = measure(childId, level + 1);
-        if (child) unit.children.push(child);
-      }
+      for (const cid of childIds.get(id) || []) childIdSet.add(cid);
+    }
+    const sortedChildIds = [...childIdSet]
+      .map((cid) => byId.get(cid))
+      .filter(Boolean)
+      .sort((a, b) => (b.birth_date || '').localeCompare(a.birth_date || ''))
+      .map((c) => c.id);
+    for (const cid of sortedChildIds) {
+      const child = measure(cid, level + 1);
+      if (child) unit.children.push(child);
     }
 
     unit.unitWidth = ids.length * CARD_W + (ids.length - 1) * COUPLE_GAP;
@@ -224,12 +233,70 @@ function openTree(members) {
     return;
   }
   empty.hidden = true;
+  enablePan(canvas);
   canvas.appendChild(svg);
   overlay.hidden = false;
 }
 
 function closeTree() {
   document.getElementById('tree-overlay').hidden = true;
+}
+
+// Déplacement de l'arbre à la souris / au doigt (au lieu des ascenseurs).
+function enablePan(canvas) {
+  if (canvas.dataset.panEnabled) return;
+  canvas.dataset.panEnabled = 'true';
+
+  let isDown = false;
+  let moved = false;
+  let startX = 0;
+  let startY = 0;
+  let scrollStartX = 0;
+  let scrollStartY = 0;
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    isDown = true;
+    moved = false;
+    startX = e.clientX;
+    startY = e.clientY;
+    scrollStartX = canvas.scrollLeft;
+    scrollStartY = canvas.scrollTop;
+    canvas.setPointerCapture(e.pointerId);
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!isDown) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (!moved && Math.hypot(dx, dy) > 5) {
+      moved = true;
+      canvas.classList.add('panning');
+    }
+    if (moved) {
+      canvas.scrollLeft = scrollStartX - dx;
+      canvas.scrollTop = scrollStartY - dy;
+    }
+  });
+
+  const end = () => {
+    isDown = false;
+    canvas.classList.remove('panning');
+  };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+
+  // Un glissement ne doit pas déclencher le clic sur une carte.
+  canvas.addEventListener(
+    'click',
+    (e) => {
+      if (!moved) return;
+      e.stopPropagation();
+      e.preventDefault();
+      moved = false;
+    },
+    true
+  );
 }
 
 export { openTree, closeTree };
