@@ -1,7 +1,7 @@
 // ============================================================
 // Edge Function : login-code
 //
-// Envoie le code de connexion à usage unique (6 chiffres) sur
+// Envoie le code de connexion à usage unique (8 chiffres) sur
 // l'adresse email d'un membre. Appelée depuis Postgres par pg_net
 // via request_login_code (migration 13) : le navigateur ne la
 // voit jamais ; le code transite par https et n'est stocké qu'en
@@ -83,7 +83,7 @@ Deno.serve(async (req: Request) => {
   const email = body.email ?? '';
   const code = body.code ?? '';
   const minutes = Number.isFinite(body.minutes) ? Number(body.minutes) : 10;
-  if (!email || !/^\d{6}$/.test(code)) {
+  if (!email || !/^\d{8}$/.test(code)) {
     return new Response(JSON.stringify({ error: 'Paramètres invalides' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

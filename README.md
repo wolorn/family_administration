@@ -6,7 +6,7 @@ adossé à une base Supabase.
 ## Fonctionnalités
 
 - Accès par email + code à usage unique : l'utilisateur saisit l'adresse email
-  d'un membre, la base génère un **code à 6 chiffres à usage unique** et l'envoie
+  d'un membre, la base génère un **code à 8 chiffres à usage unique** et l'envoie
   sur cette adresse (Edge Function `login-code`). Le code est stocké **hashé**,
   valable 5 essais maxi, et sa **durée de validité est paramétrable dans
   Supabase** (`app_settings`, clé `otp_validity_minutes`, défaut 10 minutes).
@@ -104,6 +104,7 @@ adossé à une base Supabase.
      `09_traffic_keepalive.sql`, `10_session_tokens.sql`, `11_site_ping_limit.sql`,
      `09_traffic_keepalive.sql`, `10_session_tokens.sql`, `11_site_ping_limit.sql`,
      `12_edge_shared_secret.sql` puis `13_email_code_login.sql`
+     et `14_code_8_digits.sql`
      (le nom de famille
      par défaut « Ma Famille » se change dans la table `app_settings` :
      `update app_settings set value = '…' where key = 'family_name';`).
@@ -155,6 +156,9 @@ Trois fonctions Edge envoient des emails en SMTP via votre compte Proton Mail :
   `12_edge_shared_secret.sql`) ;
 - `notify-lockout` : alerte quand un blocage anti brute-force se déclenche
   (invoquée depuis Postgres par pg_net, migration `08_global_lock_alert.sql`).
+
+Après la migration `14_code_8_digits.sql` (code à 8 chiffres), redéployer
+`login-code` : sa validation passe de 6 à 8 chiffres.
 
 Pré-requis côté Proton : créez un **jeton SMTP** (Proton Mail →
 *Tous les réglages → IMAP/SMTP → Jetons SMTP → Générer*) et notez le nom
