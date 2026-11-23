@@ -56,7 +56,9 @@ adossé à une base Supabase.
   administrateurs (fonction Edge `notify-lockout`, appelée par pg_net).
 - **Keep-alive de la base** : au chargement de la page, le site envoie 50 pings
   discrets (fonction `site_ping`, trace `traffic_logging`, purge > 1 jour) pour
-  éviter la mise en pause automatique de la base Supabase gratuite.
+  éviter la mise en pause automatique de la base Supabase gratuite. Un plafond
+  borne la table : au-delà de 100 000 traces de moins de 24 h (attaque par
+  automatisation), les insertions sont silencieusement ignorées.
 
 ## Sécurité
 
@@ -87,7 +89,8 @@ adossé à une base Supabase.
      `03_add_spouse.sql`, `04_grant_app_settings_anon.sql`,
      `05_member_proposals.sql`, `06_propose_new_members.sql`,
      `07_brute_force_protection.sql`, `08_global_lock_alert.sql`,
-     `09_traffic_keepalive.sql`, `10_session_tokens.sql` (le nom de famille
+     `09_traffic_keepalive.sql`, `10_session_tokens.sql`, `11_site_ping_limit.sql`
+     (le nom de famille
      par défaut « Ma Famille » se change dans la table `app_settings` :
      `update app_settings set value = '…' where key = 'family_name';`).
 
