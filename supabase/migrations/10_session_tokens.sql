@@ -15,6 +15,28 @@
 -- À exécuter dans le SQL Editor de Supabase.
 -- ============================================================
 
+-- Les fonctions ci-dessous existent déjà depuis les migrations
+-- précédentes avec les mêmes types d'arguments mais des paramètres
+-- renommés (p_password → p_session_token) ; PostgreSQL ne permet pas
+-- ce renommage via create or replace (erreur 42P16). On les droppe
+-- donc avant de les recréer. Aucun objet SQL ne dépend d'elles
+-- (le front les appelle uniquement par RPC).
+drop function if exists app_username(text);
+drop function if exists get_members(text);
+drop function if exists list_users(text);
+drop function if exists list_proposals(text);
+drop function if exists upsert_member(text, jsonb);
+drop function if exists delete_member(text, uuid);
+drop function if exists set_parent(text, uuid, uuid, text);
+drop function if exists set_spouse(text, uuid, uuid);
+drop function if exists submit_proposal(text, uuid, jsonb);
+drop function if exists accept_proposal(text, uuid);
+drop function if exists reject_proposal(text, uuid);
+drop function if exists create_user(text, text, text, text);
+drop function if exists set_user_password(text, uuid, text);
+drop function if exists set_user_active(text, uuid, boolean);
+drop function if exists delete_user(text, uuid);
+
 create table if not exists auth_sessions (
   id           uuid primary key default gen_random_uuid(),
   token_hash   text not null unique,
