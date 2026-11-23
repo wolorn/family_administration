@@ -46,6 +46,16 @@
         <input type="search" id="search-input"
                placeholder="Rechercher (nom, prénom, adresse, email, dates…)"
                autocomplete="off">
+        <div id="mobile-sort">
+          <select id="mobile-sort-key" aria-label="Trier par">
+            <option value="birthday">Jour de naissance</option>
+            <option value="first_name">Prénom</option>
+            <option value="last_name">Nom</option>
+            <option value="birth_date">Date de naissance</option>
+            <option value="age">Âge</option>
+          </select>
+          <button id="mobile-sort-dir" type="button" aria-label="Inverser le tri">↑</button>
+        </div>
         <span id="count-label" class="hint"></span>
         <div id="read-actions" hidden>
           <button id="tree-btn" type="button">Arbre généalogique</button>

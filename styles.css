@@ -447,6 +447,9 @@ a.detail-link { color: var(--primary); }
 .table-scroller { overflow-x: auto; }
 #proposals-list .proposal-card { overflow-x: auto; }
 
+/* Tri mobile masqué sur grand écran (l'en-tête triable suffit) */
+#mobile-sort { display: none; }
+
 @media (max-width: 700px) {
   html { -webkit-text-size-adjust: 100%; }
 
@@ -472,6 +475,14 @@ a.detail-link { color: var(--primary); }
   /* Barre d'outils : recherche pleine largeur, boutons en grille */
   .toolbar { gap: 0.5rem; margin-bottom: 0.75rem; }
   #search-input { flex-basis: 100%; min-width: 0; }
+  #mobile-sort {
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+  }
+  #mobile-sort select { flex: 1; }
+  #mobile-sort button { flex: 0 0 auto; min-width: 52px; }
+  #mobile-sort label { font-size: 0.85rem; font-weight: 600; align-self: center; margin: 0; }
   #read-actions, #admin-actions {
     display: flex;
     flex-wrap: wrap;
