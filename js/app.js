@@ -288,6 +288,12 @@ function renderTable() {
     const age = ageOf(m);
     tdAge.textContent = m.death_date ? `${age} ans (décédé·e)` : `${age} ans`;
 
+    // Libellés utilisés par l'affichage en cartes sur mobile.
+    tdFirst.dataset.label = 'Prénom';
+    tdLast.dataset.label = 'Nom';
+    tdBirth.dataset.label = 'Naissance';
+    tdAge.dataset.label = 'Âge';
+
     tr.append(tdFirst, tdLast, tdBirth, tdAge);
 
     if (role === 'admin') {
@@ -308,6 +314,7 @@ function renderTable() {
         deleteMember(m);
       });
       tdActions.append(editBtn, deleteBtn);
+      tdActions.dataset.label = 'Actions';
       tr.appendChild(tdActions);
     }
 
