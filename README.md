@@ -11,7 +11,11 @@ adossé à une base Supabase.
   valable 5 essais maxi, et sa **durée de validité est paramétrable dans
   Supabase** (`app_settings`, clé `otp_validity_minutes`, défaut 10 minutes).
   Une session à token opaque (256 bits, stocké hashé) prend ensuite le relais :
-  expirable (24 h glissantes) et révocable côté serveur.
+  expirable et révocable côté serveur, avec une **durée paramétrable dans
+  Supabase** (`app_settings`, clé `session_validity_minutes`, défaut 1440 =
+  24 h, bornée de 5 minutes à 30 jours) et qui **glisse** à chaque usage :
+  une session reste valable tant qu'elle est utilisée au moins une fois par
+  durée paramétrée.
 - Tableau principal de tous les membres, triés par jour de l'année de naissance
   (anniversaires) : prénom, nom, date de naissance, âge.
 - Barre de recherche portant sur **tous les champs** d'un membre (adresse, dates,
@@ -98,16 +102,27 @@ adossé à une base Supabase.
      `05_member_proposals.sql`, `06_propose_new_members.sql`,
      `07_brute_force_protection.sql`, `08_global_lock_alert.sql`,
      `09_traffic_keepalive.sql`, `10_session_tokens.sql`, `11_site_ping_limit.sql`,
-     `12_edge_shared_secret.sql` (le nom de famille
+     `09_traffic_keepalive.sql`, `10_session_tokens.sql`, `11_site_ping_limit.sql`,
+     `12_edge_shared_secret.sql` puis `13_email_code_login.sql`
+     (le nom de famille
      par défaut « Ma Famille » se change dans la table `app_settings` :
      `update app_settings set value = '…' where key = 'family_name';`).
 
-2. **Changer les mots de passe initiaux**
-   Dans le SQL Editor :
+2. **Définir les administrateurs**
+   Le rôle est porté par le **membre**. Pour le premier admin, dans le SQL
+   Editor :
    ```sql
-   update app_users set password_hash = crypt('VOTRE_MOT_DE_PASSE_ADMIN', gen_salt('bf', 12)) where username = 'admin';
-   update app_users set password_hash = crypt('VOTRE_MOT_DE_PASSE_FAMILLE', gen_salt('bf', 12)) where username = 'famille';
+   update members set role = 'admin' where id = '<uuid du membre>';
    ```
+   Ensuite, les admins basculent le rôle depuis le site (fiche membre →
+   bouton « Donner / retirer le rôle admin »). Le dernier admin ne peut pas
+   être rétrogradé. Chaque membre qui doit se connecter doit avoir une
+   adresse email **renseignée et unique** dans la base.
+
+   Réglages dans `app_settings` (Table Editor ou SQL) :
+   - `otp_validity_minutes` : durée de validité du code (défaut 10 min) ;
+   - `session_validity_minutes` : durée d'une session (défaut 1440 = 24 h,
+     glissante : repoussée à chaque requête tant que la session est utilisée).
 
 3. **Configurer le frontend**
    Dans le Dashboard Supabase (*Settings → API*), récupérez l'URL du projet et la
@@ -120,16 +135,21 @@ adossé à une base Supabase.
    - Pour GitHub Pages : poussez le dépôt puis *Settings → Pages → Deploy from
      branch → main / (root)*.
 
-## Créer des comptes supplémentaires
+## Rôles des membres
 
-Connectez-vous sur le site avec le compte `admin`, ouvrez « Utilisateurs » :
-vous pouvez y créer des comptes (lecture seule ou admin), changer un mot de passe,
-désactiver ou supprimer un compte.
+La connexion se fait par email + code à usage unique (voir la mise en place).
+Le rôle est porté par le membre : connecté en admin, ouvrez la fiche d'un
+membre et utilisez « Donner / retirer le rôle admin ». Tout membre avec une
+adresse email renseignée peut se connecter (rôle « user », lecture seule +
+propositions de modification) ; seuls les « admin » modifient directement et
+basculent les rôles.
 
-## Notifications email (propositions et alertes de blocage)
+## Notifications email (codes de connexion, propositions et alertes)
 
-Deux fonctions Edge envoient des emails en SMTP via votre compte Proton Mail :
+Trois fonctions Edge envoient des emails en SMTP via votre compte Proton Mail :
 
+- `login-code` : envoie le code à usage unique de connexion (invoquée depuis
+  Postgres par pg_net, migration `13_email_code_login.sql`) ;
 - `notify-proposal` : email aux admins lors d'une proposition de modification/ajout
   (invoquée depuis Postgres par pg_net via le trigger de la migration
   `12_edge_shared_secret.sql`) ;
@@ -145,6 +165,7 @@ Déploiement (Supabase CLI installée et projet lié) :
 ```sh
 supabase functions deploy notify-proposal
 supabase functions deploy notify-lockout
+supabase functions deploy login-code
 supabase secrets set SMTP_USER="nom_utilisateur_du_jeton" \
   SMTP_PASS="mot_de_passe_du_jeton" \
   NOTIFY_FROM_EMAIL="vous@exemple.fr" \

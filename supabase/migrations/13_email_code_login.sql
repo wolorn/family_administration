@@ -11,6 +11,13 @@
 -- (cette ligne est créée ci-dessous, éditable aussi via le
 --  Table Editor).
 --
+-- La durée des sessions est paramétrable elle aussi (elle fait
+-- boule de neige : repoussée à chaque requête tant que la session
+-- est utilisée au moins une fois par durée) :
+--   update app_settings set value = '2880'  -- minutes (48 h)
+--     where key = 'session_validity_minutes';
+-- (défaut : 1440 = 24 h, bornée de 5 à 43200 = 30 jours).
+--
 -- Le rôle est porté par le MEMBRE : members.role in ('user','admin').
 -- Seuls les membres « admin » ont les pouvoirs admin ; tous les
 -- autres membres sont des « user » :
@@ -33,10 +40,14 @@ alter table members
     check (role in ('user', 'admin'));
 
 -- ------------------------------------------------------------
--- 2. Paramètre de validité des codes (minutes).
+-- 2. Paramètres de validité (codes et sessions, en minutes).
 -- ------------------------------------------------------------
 insert into app_settings (key, value)
 values ('otp_validity_minutes', '10')
+on conflict (key) do nothing;
+
+insert into app_settings (key, value)
+values ('session_validity_minutes', '1440')
 on conflict (key) do nothing;
 
 -- ------------------------------------------------------------
@@ -80,6 +91,48 @@ create index if not exists idx_auth_sessions_member on auth_sessions (member_id)
 
 -- Les anciens rôles « viewer » éventuels deviennent « user ».
 update auth_sessions set role = 'user' where role = 'viewer';
+
+-- Durée de session : lue dans app_settings, bornée 5 min .. 30 jours,
+-- défaut 24 h. Utilisée par session_role et login_with_code.
+create or replace function app_session_validity_minutes()
+returns int
+language sql
+stable
+security definer
+set search_path = public, extensions
+as $$
+  select greatest(5, least(43200, coalesce(
+    (select case when value ~ '^\s*\d+\s*$' then value::int end
+       from app_settings where key = 'session_validity_minutes'),
+    1440)));
+$$;
+
+-- session_role : recréée ici, sans app_users (supprimé par cette
+-- migration). Valide le token et fait glisser l'expiration de la
+-- durée paramétrable après chaque usage. Renvoie le rôle, ou NULL.
+create or replace function session_role(p_session_token text)
+returns text
+language plpgsql
+volatile
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_role text;
+begin
+  if p_session_token is null or p_session_token = '' then
+    return null;
+  end if;
+
+  update auth_sessions s
+     set last_used_at = now(),
+         expires_at   = now() + make_interval(mins => app_session_validity_minutes())
+   where s.token_hash = encode(digest(p_session_token, 'sha256'), 'hex')
+     and s.expires_at > now()
+   returning s.role into v_role;
+
+  return v_role;
+end $$;
 
 -- ------------------------------------------------------------
 -- 6. Envoi du code par email (pg_net → Edge Function « login-code »).
@@ -303,9 +356,17 @@ begin
 
   select role into v_role from members where id = v_row.member_id;
 
+  -- Purge des sessions expirées.
+  delete from auth_sessions where expires_at < now();
+
   v_token := encode(gen_random_bytes(32), 'hex');
-  insert into auth_sessions (token_hash, role, member_id)
-  values (encode(digest(v_token, 'sha256'), 'hex'), v_role, v_row.member_id);
+  insert into auth_sessions (token_hash, role, member_id, expires_at)
+  values (
+    encode(digest(v_token, 'sha256'), 'hex'),
+    v_role,
+    v_row.member_id,
+    now() + make_interval(mins => app_session_validity_minutes())
+  );
 
   return json_build_object('token', v_token, 'role', v_role);
 end $$;
