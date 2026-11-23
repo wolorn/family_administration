@@ -34,8 +34,13 @@ const $ = (id) => document.getElementById(id);
 const els = {
   familyName: $('family-name'),
   loginSection: $('login-section'),  loginForm: $('login-form'),
-  loginPassword: $('login-password'),
+  loginEmail: $('login-email'),
   loginError: $('login-error'),
+  codeForm: $('code-form'),
+  codeHint: $('code-hint'),
+  loginCode: $('login-code'),
+  codeError: $('code-error'),
+  resendBtn: $('resend-btn'),
   configError: $('config-error'),
   appSection: $('app-section'),
   sessionBar: $('session-bar'),
@@ -54,17 +59,11 @@ const els = {
   adminActions: $('admin-actions'),
   addMemberBtn: $('add-member-btn'),
   proposalsBtn: $('proposals-btn'),
-  toggleUsersBtn: $('toggle-users-btn'),
   globalSuccess: $('global-success'),
   globalError: $('global-error'),
   tbody: $('members-tbody'),
   thActions: $('th-actions'),
   emptyMsg: $('empty-msg'),
-  usersSection: $('users-section'),
-  usersTbody: $('users-tbody'),
-  usersError: $('users-error'),
-  userForm: $('user-form'),
-  userUsername: $('user-username'),
   proposalsSection: $('proposals-section'),
   proposalsList: $('proposals-list'),
   proposalsError: $('proposals-error'),
@@ -75,6 +74,7 @@ const els = {
   memberViewerActions: $('member-viewer-actions'),
   proposeBtn: $('propose-btn'),
   editMemberBtn: $('edit-member-btn'),
+  memberRoleBtn: $('member-role-btn'),
   deleteMemberBtn: $('delete-member-btn'),
   memberError: $('member-error'),
   formModal: $('member-form-modal'),
@@ -87,14 +87,16 @@ const els = {
 
 // ------------------------------------------------------------
 // Appel RPC générique : le token de session est injecté
-// automatiquement dans chaque requête (sauf app_login). Le mot de
-// passe ne transite plus qu'à la connexion.
+// automatiquement dans chaque requête (sauf les étapes de connexion
+// par email/code). Aucun mot de passe n'est jamais transmis.
 // ------------------------------------------------------------
+const RPC_NO_SESSION = new Set(['request_login_code', 'login_with_code']);
+
 function rpc(name, args = {}) {
   if (!supabase) {
     return Promise.reject(new Error('Supabase non configuré. Éditez js/config.js.'));
   }
-  const payload = sessionToken && name !== 'app_login'
+  const payload = sessionToken && !RPC_NO_SESSION.has(name)
     ? { ...args, p_session_token: sessionToken }
     : args;
   return supabase.rpc(name, payload).then(({ data, error }) => {
@@ -144,14 +146,61 @@ async function loadFamilyName() {
 // ------------------------------------------------------------
 // Session
 // ------------------------------------------------------------
-async function login(pwd) {
-  const res = await rpc('app_login', { p_password: pwd });
-  if (!res || !res.token) throw new Error('Mot de passe invalide.');
-  sessionToken = res.token;
-  role = res.role;
-  sessionStorage.setItem('family_admin_session', res.token);
-  await loadMembers();
-  showApp();
+// Adresse email en attente de code (étape 1 → étape 2 du login).
+let pendingLoginEmail = '';
+
+function showLoginStep(step) {
+  els.codeError.hidden = true;
+  els.loginError.hidden = true;
+  if (step === 'email') {
+    els.loginForm.hidden = false;
+    els.codeForm.hidden = true;
+    pendingLoginEmail = '';
+  } else {
+    els.loginForm.hidden = true;
+    els.codeForm.hidden = false;
+    els.codeHint.textContent = `Un code à usage unique a été envoyé à ${pendingLoginEmail}.`;
+    els.loginCode.value = '';
+    els.loginCode.focus();
+  }
+}
+
+// Étape 1 : demande d'un code (envoyé par email via la base).
+async function sendLoginCode() {
+  els.loginForm.hidden = false;
+  try {
+    els.loginForm.querySelector('button[type="submit"]').disabled = true;
+    const msg = await rpc('request_login_code', { p_email: els.loginEmail.value.trim() });
+    pendingLoginEmail = els.loginEmail.value.trim().toLowerCase();
+    els.codeHint.hidden = false;
+    showLoginStep('code');
+    if (msg) els.codeHint.textContent = msg;
+  } catch (err) {
+    showError(els.loginError, err.message);
+  } finally {
+    els.loginForm.querySelector('button[type="submit"]').disabled = false;
+  }
+}
+
+// Étape 2 : connexion avec le code reçu.
+async function loginWithCode() {
+  try {
+    els.loginCode.disabled = true;
+    const res = await rpc('login_with_code', {
+      p_email: pendingLoginEmail,
+      p_code: els.loginCode.value.trim(),
+    });
+    if (!res || !res.token) throw new Error('Code invalide.');
+    sessionToken = res.token;
+    role = res.role;
+    sessionStorage.setItem('family_admin_session', res.token);
+    await loadMembers();
+    showApp();
+  } catch (err) {
+    showError(els.codeError, err.message);
+  } finally {
+    els.loginCode.disabled = false;
+  }
 }
 
 function endSession() {
@@ -162,7 +211,8 @@ function endSession() {
   els.appSection.hidden = true;
   els.sessionBar.hidden = true;
   els.loginSection.hidden = false;
-  els.loginPassword.value = '';
+  showLoginStep('email');
+  els.loginEmail.value = '';
   proposals = [];
   els.proposalsSection.hidden = true;
 }
@@ -179,7 +229,9 @@ function showApp() {
   els.loginSection.hidden = true;
   els.appSection.hidden = false;
   els.sessionBar.hidden = false;
-  els.sessionUser.textContent = role === 'admin' ? 'Connecté : administrateur' : 'Connecté : lecture seule';
+  els.sessionUser.textContent = role === 'admin'
+    ? 'Connecté : administrateur'
+    : 'Connecté : utilisateur (lecture seule)';
   const isAdmin = role === 'admin';
   els.adminActions.hidden = !isAdmin;
   els.readActions.hidden = false;
@@ -525,6 +577,28 @@ function openMemberModal(id) {
     els.memberModal.close();
     openMemberForm(m);
   };
+  // Bascule administration (rôle porté par le membre, migration 13).
+  if (role === 'admin') {
+    els.memberRoleBtn.textContent = m.role === 'admin'
+      ? 'Retirer le rôle admin'
+      : 'Donner le rôle admin';
+    els.memberRoleBtn.onclick = async () => {
+      try {
+        await rpc('set_member_role', {
+          p_member_id: m.id,
+          p_role: m.role === 'admin' ? 'user' : 'admin',
+        });
+        els.memberModal.close();
+        await loadMembers();
+        showGlobalSuccess(m.role === 'admin'
+          ? 'Rôle admin retiré.'
+          : 'Rôle admin accordé.');
+      } catch (err) {
+        if (!els.memberModal.open) showGlobalError(err.message);
+        else showError(els.memberError, err.message);
+      }
+    };
+  }
   els.deleteMemberBtn.onclick = () => {
     deleteMember(m);
   };
@@ -889,107 +963,12 @@ async function deleteMember(member) {
   }
 }
 
-// ------------------------------------------------------------
-// Gestion des comptes (admin)
-// ------------------------------------------------------------
-async function loadUsers() {
-  const users = (await rpc('list_users', {})) || [];
-  els.usersTbody.textContent = '';
-  for (const u of users) {
-    const tr = document.createElement('tr');
-    if (!u.is_active) tr.className = 'users-row-active';
-
-    const tdUser = document.createElement('td');
-    tdUser.textContent = u.username;
-    const tdRole = document.createElement('td');
-    tdRole.textContent = u.role === 'admin' ? 'Administrateur' : 'Lecture seule';
-    const tdActive = document.createElement('td');
-    tdActive.textContent = u.is_active ? 'Oui' : 'Non';
-    const tdCreated = document.createElement('td');
-    tdCreated.textContent = new Date(u.created_at).toLocaleDateString('fr-FR');
-    tr.append(tdUser, tdRole, tdActive, tdCreated);
-
-    const tdActions = document.createElement('td');
-    const passwordBtn = document.createElement('button');
-    passwordBtn.type = 'button';
-    passwordBtn.textContent = 'Mot de passe';
-    passwordBtn.addEventListener('click', async () => {
-      const newPwd = prompt(`Nouveau mot de passe pour « ${u.username} » (min. 8 caractères) :`);
-      if (!newPwd) return;
-      try {
-        await rpc('set_user_password', { p_user_id: u.id, p_new_password: newPwd });
-        clearError(els.usersError);
-      } catch (err) {
-        showError(els.usersError, err.message);
-      }
-    });
-
-    const toggleBtn = document.createElement('button');
-    toggleBtn.type = 'button';
-    toggleBtn.textContent = u.is_active ? 'Désactiver' : 'Activer';
-    toggleBtn.addEventListener('click', async () => {
-      try {
-        await rpc('set_user_active', { p_user_id: u.id, p_is_active: !u.is_active });
-        await loadUsers();
-      } catch (err) {
-        showError(els.usersError, err.message);
-      }
-    });
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.type = 'button';
-    deleteBtn.textContent = 'Supprimer';
-    deleteBtn.classList.add('danger');
-    deleteBtn.addEventListener('click', async () => {
-      if (!confirm(`Supprimer le compte « ${u.username} » ?`)) return;
-      try {
-        await rpc('delete_user', { p_user_id: u.id });
-        await loadUsers();
-      } catch (err) {
-        showError(els.usersError, err.message);
-      }
-    });
-
-    tdActions.append(passwordBtn, toggleBtn, deleteBtn);
-    tr.appendChild(tdActions);
-    els.usersTbody.appendChild(tr);
-  }
-}
-
-els.userForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  clearError(els.usersError);
-  try {
-    await rpc('create_user', {
-            p_username: els.userUsername.value.trim(),
-      p_new_password: $('user-password').value,
-      p_role: $('user-role').value,
-    });
-    els.userForm.reset();
-    await loadUsers();
-  } catch (err) {
-    showError(els.usersError, err.message);
-  }
-});
-
-els.toggleUsersBtn.addEventListener('click', async () => {
-  clearError(els.usersError);
-  if (els.usersSection.hidden) {
-    await loadUsers();
-    els.usersSection.hidden = false;
-    els.proposalsSection.hidden = true;
-  } else {
-    els.usersSection.hidden = true;
-  }
-});
-
 els.proposalsBtn.addEventListener('click', async () => {
   clearError(els.proposalsError);
   if (els.proposalsSection.hidden) {
     try {
       await loadProposals();
       els.proposalsSection.hidden = false;
-      els.usersSection.hidden = true;
     } catch (err) {
       showError(els.proposalsError, err.message);
     }
@@ -1001,18 +980,22 @@ els.proposalsBtn.addEventListener('click', async () => {
 // ------------------------------------------------------------
 // Écouteurs généraux
 // ------------------------------------------------------------
+// Étape 1 : demande du code.
 els.loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   clearError(els.loginError);
-  els.loginPassword.disabled = true;
-  try {
-    await login(els.loginPassword.value);
-  } catch (err) {
-    showError(els.loginError, err.message);
-  } finally {
-    els.loginPassword.disabled = false;
-  }
+  await sendLoginCode();
 });
+
+// Étape 2 : connexion avec le code.
+els.codeForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearError(els.codeError);
+  await loginWithCode();
+});
+
+// Étape 2 → étape 1 : changer d'adresse email.
+els.resendBtn.addEventListener('click', () => showLoginStep('email'));
 
 els.logoutBtn.addEventListener('click', logout);
 els.addMemberBtn.addEventListener('click', () => openMemberForm(null));
@@ -1154,7 +1137,7 @@ async function init() {
     }
     endSession();
   }
-  els.loginPassword.focus();
+  els.loginEmail.focus();
 }
 
 init();

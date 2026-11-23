@@ -5,11 +5,13 @@ adossé à une base Supabase.
 
 ## Fonctionnalités
 
-- Accès aux données protégé par mot de passe : **le mot de passe n'est transmis
-  qu'à la connexion** (`app_login`, vérification bcrypt + journal anti
-  brute-force). Une session à token opaque (256 bits, stocké hashé) prend
-  ensuite le relais : expirable (24 h glissantes) et révocable côté serveur
-  (déconnexion, changement de mot de passe, désactivation du compte).
+- Accès par email + code à usage unique : l'utilisateur saisit l'adresse email
+  d'un membre, la base génère un **code à 6 chiffres à usage unique** et l'envoie
+  sur cette adresse (Edge Function `login-code`). Le code est stocké **hashé**,
+  valable 5 essais maxi, et sa **durée de validité est paramétrable dans
+  Supabase** (`app_settings`, clé `otp_validity_minutes`, défaut 10 minutes).
+  Une session à token opaque (256 bits, stocké hashé) prend ensuite le relais :
+  expirable (24 h glissantes) et révocable côté serveur.
 - Tableau principal de tous les membres, triés par jour de l'année de naissance
   (anniversaires) : prénom, nom, date de naissance, âge.
 - Barre de recherche portant sur **tous les champs** d'un membre (adresse, dates,
@@ -36,9 +38,11 @@ adossé à une base Supabase.
   est un lien symétrique, cohérencé automatiquement dans les deux sens.
 - Le nom de la famille à administrer est configurable (table `app_settings`, lecture
   publique) et s'affiche en haut de la page, même avant connexion.
-- Comptes utilisateurs avec deux rôles : `admin` (lecture + écriture + gestion des
-  comptes) et `viewer` (lecture seule). Les écritures sont refusées côté serveur
-  pour les non-admins, pas seulement cachées dans l'interface.
+- Rôles portés par les **membres** : un membre peut porter le rôle `admin`
+  (lecture + écriture + gestion des rôles), accordé/retiré depuis sa fiche par
+  un admin. Tous les autres membres sont des `user` (lecture seule). Les
+  écritures sont refusées côté serveur pour les non-admins, pas seulement
+  cachées dans l'interface.
 - **Propositions de modification** : un utilisateur non admin peut ouvrir la fiche
   d'un membre, cliquer « Proposer une modification » et corriger ou compléter les
   champs. Rien n'est publié immédiatement : la proposition est stockée, un email
@@ -49,11 +53,12 @@ adossé à une base Supabase.
 - **Propositions d'ajout** : un utilisateur non admin peut aussi proposer la
   création d'un nouveau membre (« Proposer l'ajout d'un membre ») ; l'admin
   voit les champs proposés (tous en vert) et l'acceptation crée le membre.
-- **Anti brute-force renforcé** : au-delà du verrou par IP, un verrou global
-  (toutes IP confondues : 10 échecs en 15 minutes) bloque le site entier pour
-  tous les clients pendant le reste de la fenêtre — utile contre une attaque
-  répartie. Tout déclenchement de blocage envoie un email d'alerte aux
-  administrateurs (fonction Edge `notify-lockout`, appelée par pg_net).
+- **Anti brute-force sur la connexion** : le code de connexion s'épuise
+  (5 essais maxi puis invalidation) ; au-delà, il faut en redemander. Un verrou
+  par IP (15 échecs de code en 15 minutes) bloque les nouvelles tentatives, et
+  son déclenchement envoie un email d'alerte aux administrateurs (fonction Edge
+  `notify-lockout`, appelée par pg_net). Les demandes de code sont elles-mêmes
+  plafonnées (délai d'1 minute par adresse, 10/h par adresse, 30/15 min par IP).
 - **Keep-alive de la base** : au chargement de la page, le site envoie 50 pings
   discrets (fonction `site_ping`, trace `traffic_logging`, purge > 1 jour) pour
   éviter la mise en pause automatique de la base Supabase gratuite. Un plafond

@@ -76,7 +76,11 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const source = body.source === 'global' ? 'verrou global (toutes IP)' : 'verrou par IP';
+  const source = body.source === 'global'
+    ? 'verrou global (toutes IP)'
+    : body.source === 'code'
+      ? 'verrou anti tentatives de connexion (codes)'
+      : 'verrou par IP';
   const ip = body.ip ?? '?';
   const failures = Number.isFinite(body.failures) ? Number(body.failures) : 0;
   const at = body.at ?? '';
