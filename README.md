@@ -5,8 +5,11 @@ adossé à une base Supabase.
 
 ## Fonctionnalités
 
-- Accès aux données protégé par mot de passe : **chaque requête de lecture/écriture**
-  vers la base transporte le mot de passe, vérifié côté serveur (bcrypt) à chaque appel.
+- Accès aux données protégé par mot de passe : **le mot de passe n'est transmis
+  qu'à la connexion** (`app_login`, vérification bcrypt + journal anti
+  brute-force). Une session à token opaque (256 bits, stocké hashé) prend
+  ensuite le relais : expirable (24 h glissantes) et révocable côté serveur
+  (déconnexion, changement de mot de passe, désactivation du compte).
 - Tableau principal de tous les membres, triés par jour de l'année de naissance
   (anniversaires) : prénom, nom, date de naissance, âge.
 - Barre de recherche portant sur **tous les champs** d'un membre (adresse, dates,
@@ -61,8 +64,9 @@ adossé à une base Supabase.
   `upsert_member`, `set_parent`, …) : les tables sont protégées par RLS sans aucune
   policy, donc l'accès direct depuis le navigateur avec la clé anon est refusé.
 - Les mots de passe sont stockés hachés avec bcrypt (`pgcrypto`), jamais en clair.
-- **Protection anti brute-force** : chaque appel RPC vérifiant le mot de passe est
-  journalisé (`auth_attempts`) avec trois niveaux — verrou par IP (5 échecs en
+- **Protection anti brute-force** : la connexion (et tout appel RPC vérifiant
+  le mot de passe) est journalisée (`auth_attempts`) avec trois niveaux —
+  verrou par IP (5 échecs en
   15 minutes), verrou global toutes IP (10 échecs en 15 minutes, contre les
   attaques réparties). Pendant un blocage, même un mot de passe correct est
   refusé (message affiché avec le délai restant) ; un succès remet le compteur
@@ -83,7 +87,7 @@ adossé à une base Supabase.
      `03_add_spouse.sql`, `04_grant_app_settings_anon.sql`,
      `05_member_proposals.sql`, `06_propose_new_members.sql`,
      `07_brute_force_protection.sql`, `08_global_lock_alert.sql`,
-     `09_traffic_keepalive.sql` (le nom de famille
+     `09_traffic_keepalive.sql`, `10_session_tokens.sql` (le nom de famille
      par défaut « Ma Famille » se change dans la table `app_settings` :
      `update app_settings set value = '…' where key = 'family_name';`).
 

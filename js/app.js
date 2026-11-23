@@ -19,7 +19,7 @@ const supabase = isConfigured ? createClient(supabaseUrl, supabaseKey) : null;
 // ------------------------------------------------------------
 // État
 // ------------------------------------------------------------
-let password = sessionStorage.getItem('family_admin_password') || '';
+let sessionToken = sessionStorage.getItem('family_admin_session') || '';
 let role = null;
 let members = [];
 let formMode = 'edit'; // 'edit' (admin) | 'proposal' (proposition d'un viewer)
@@ -86,15 +86,27 @@ const els = {
 };
 
 // ------------------------------------------------------------
-// Appel RPC générique : chaque requête porte le mot de passe.
+// Appel RPC générique : le token de session est injecté
+// automatiquement dans chaque requête (sauf app_login). Le mot de
+// passe ne transite plus qu'à la connexion.
 // ------------------------------------------------------------
 function rpc(name, args = {}) {
   if (!supabase) {
     return Promise.reject(new Error('Supabase non configuré. Éditez js/config.js.'));
   }
-  return supabase.rpc(name, args).then(({ data, error }) => {
+  const payload = sessionToken && name !== 'app_login'
+    ? { ...args, p_session_token: sessionToken }
+    : args;
+  return supabase.rpc(name, payload).then(({ data, error }) => {
     if (error) throw new Error(error.message);
     return data;
+  }).catch((err) => {
+    // Session tombée en cours d'usage (expiration, révocation) :
+    // retour à l'écran de connexion.
+    if (sessionToken && /session invalide|expirée/i.test(err.message)) {
+      endSession();
+    }
+    throw err;
   });
 }
 
@@ -133,26 +145,34 @@ async function loadFamilyName() {
 // Session
 // ------------------------------------------------------------
 async function login(pwd) {
-  const verified = await rpc('verify_password', { p_password: pwd });
-  if (!verified) throw new Error('Mot de passe invalide.');
-  role = verified;
-  password = pwd;
-  sessionStorage.setItem('family_admin_password', pwd);
+  const res = await rpc('app_login', { p_password: pwd });
+  if (!res || !res.token) throw new Error('Mot de passe invalide.');
+  sessionToken = res.token;
+  role = res.role;
+  sessionStorage.setItem('family_admin_session', res.token);
   await loadMembers();
   showApp();
 }
 
-function logout() {
-  password = '';
+function endSession() {
+  sessionToken = '';
   role = null;
   members = [];
-  sessionStorage.removeItem('family_admin_password');
+  sessionStorage.removeItem('family_admin_session');
   els.appSection.hidden = true;
   els.sessionBar.hidden = true;
   els.loginSection.hidden = false;
   els.loginPassword.value = '';
   proposals = [];
   els.proposalsSection.hidden = true;
+}
+
+function logout() {
+  // Révocation côté serveur (meilleur effort) puis nettoyage local.
+  if (sessionToken) {
+    rpc('app_logout', {}).catch(() => {});
+  }
+  endSession();
 }
 
 function showApp() {
@@ -175,7 +195,7 @@ function showGlobalError(message) {
 }
 
 async function loadMembers() {
-  members = (await rpc('get_members', { p_password: password })) || [];
+  members = (await rpc('get_members', {})) || [];
   renderTable();
   renderBirthdayBanner();
 }
@@ -619,27 +639,24 @@ async function saveMember(existing) {
 
   try {
     els.formSubmit.disabled = true;
-    const memberId = await rpc('upsert_member', { p_password: password, p_member: payload });
+    const memberId = await rpc('upsert_member', { p_member: payload });
     if (newFather !== oldFather) {
       await rpc('set_parent', {
-        p_password: password,
-        p_child_id: memberId,
+                p_child_id: memberId,
         p_parent_id: newFather,
         p_slot: 'pere',
       });
     }
     if (newMother !== oldMother) {
       await rpc('set_parent', {
-        p_password: password,
-        p_child_id: memberId,
+                p_child_id: memberId,
         p_parent_id: newMother,
         p_slot: 'mere',
       });
     }
     if (newSpouse !== oldSpouse) {
       await rpc('set_spouse', {
-        p_password: password,
-        p_member_id: memberId,
+                p_member_id: memberId,
         p_spouse_id: newSpouse,
       });
     }
@@ -732,8 +749,7 @@ async function submitProposal(existing) {
   try {
     els.formSubmit.disabled = true;
     const res = await rpc('submit_proposal', {
-      p_password: password,
-      p_member_id: existing ? existing.id : null,
+            p_member_id: existing ? existing.id : null,
       p_proposal: payload,
     });
     // Notification email des admins : facultative, l'échec n'annule
@@ -771,7 +787,7 @@ function showGlobalSuccess(message) {
 // Compteur sur le bouton admin (au chargement de session).
 async function refreshProposalsCount() {
   try {
-    proposals = (await rpc('list_proposals', { p_password: password })) || [];
+    proposals = (await rpc('list_proposals', {})) || [];
     updateProposalsBtnLabel();
   } catch {
     // Compteur indicatif : erreur ignorée.
@@ -785,7 +801,7 @@ function updateProposalsBtnLabel() {
 }
 
 async function loadProposals() {
-  proposals = (await rpc('list_proposals', { p_password: password })) || [];
+  proposals = (await rpc('list_proposals', {})) || [];
   updateProposalsBtnLabel();
   renderProposals();
 }
@@ -875,9 +891,9 @@ async function decideProposal(prop, accept, acceptBtn, rejectBtn) {
   rejectBtn.disabled = true;
   try {
     if (accept) {
-      await rpc('accept_proposal', { p_password: password, p_proposal_id: prop.id });
+      await rpc('accept_proposal', { p_proposal_id: prop.id });
     } else {
-      await rpc('reject_proposal', { p_password: password, p_proposal_id: prop.id });
+      await rpc('reject_proposal', { p_proposal_id: prop.id });
     }
     await loadMembers();
     await loadProposals();
@@ -893,7 +909,7 @@ async function deleteMember(member) {
   clearError(els.memberError);
   if (!confirm(`Supprimer ${member.first_name} ${member.last_name} ?`)) return;
   try {
-    await rpc('delete_member', { p_password: password, p_member_id: member.id });
+    await rpc('delete_member', { p_member_id: member.id });
     els.memberModal.close();
     await loadMembers();
   } catch (err) {
@@ -906,7 +922,7 @@ async function deleteMember(member) {
 // Gestion des comptes (admin)
 // ------------------------------------------------------------
 async function loadUsers() {
-  const users = (await rpc('list_users', { p_password: password })) || [];
+  const users = (await rpc('list_users', {})) || [];
   els.usersTbody.textContent = '';
   for (const u of users) {
     const tr = document.createElement('tr');
@@ -930,7 +946,7 @@ async function loadUsers() {
       const newPwd = prompt(`Nouveau mot de passe pour « ${u.username} » (min. 8 caractères) :`);
       if (!newPwd) return;
       try {
-        await rpc('set_user_password', { p_password: password, p_user_id: u.id, p_new_password: newPwd });
+        await rpc('set_user_password', { p_user_id: u.id, p_new_password: newPwd });
         clearError(els.usersError);
       } catch (err) {
         showError(els.usersError, err.message);
@@ -942,7 +958,7 @@ async function loadUsers() {
     toggleBtn.textContent = u.is_active ? 'Désactiver' : 'Activer';
     toggleBtn.addEventListener('click', async () => {
       try {
-        await rpc('set_user_active', { p_password: password, p_user_id: u.id, p_is_active: !u.is_active });
+        await rpc('set_user_active', { p_user_id: u.id, p_is_active: !u.is_active });
         await loadUsers();
       } catch (err) {
         showError(els.usersError, err.message);
@@ -956,7 +972,7 @@ async function loadUsers() {
     deleteBtn.addEventListener('click', async () => {
       if (!confirm(`Supprimer le compte « ${u.username} » ?`)) return;
       try {
-        await rpc('delete_user', { p_password: password, p_user_id: u.id });
+        await rpc('delete_user', { p_user_id: u.id });
         await loadUsers();
       } catch (err) {
         showError(els.usersError, err.message);
@@ -974,8 +990,7 @@ els.userForm.addEventListener('submit', async (e) => {
   clearError(els.usersError);
   try {
     await rpc('create_user', {
-      p_password: password,
-      p_username: els.userUsername.value.trim(),
+            p_username: els.userUsername.value.trim(),
       p_new_password: $('user-password').value,
       p_role: $('user-role').value,
     });
@@ -1153,14 +1168,20 @@ async function init() {
   }
   sendKeepAlive();
   await loadFamilyName();
-  if (password) {
+  if (sessionToken) {
     try {
-      await login(password);
-      return;
+      // Reprise de session existante : aucun mot de passe transmis.
+      const r = await rpc('session_role', {});
+      if (r) {
+        role = r;
+        await loadMembers();
+        showApp();
+        return;
+      }
     } catch {
-      sessionStorage.removeItem('family_admin_password');
-      password = '';
+      // token invalide : on retombe sur l'écran de connexion.
     }
+    endSession();
   }
   els.loginPassword.focus();
 }
