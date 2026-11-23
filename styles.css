@@ -440,3 +440,131 @@ a.detail-link { color: var(--primary); }
 
 /* Adresse de substitution (conjoint / parent) */
 .address-source { color: var(--muted); font-size: 0.85em; }
+
+/* ============================================================
+   Adaptation smartphone
+   ============================================================ */
+.table-scroller { overflow-x: auto; }
+#proposals-list .proposal-card { overflow-x: auto; }
+
+/* Tri mobile masqué sur grand écran (l'en-tête triable suffit) */
+#mobile-sort { display: none; }
+
+@media (max-width: 700px) {
+  html { -webkit-text-size-adjust: 100%; }
+
+  /* En-tête */
+  .header-inner {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.7rem 0.9rem;
+  }
+  .family-name { font-size: 1.05rem; }
+
+  main { margin: 1rem auto; padding: 0 0.7rem; }
+  .card { padding: 1rem; }
+  .login-card { margin: 1.5rem auto; }
+
+  /* Cibles tactiles plus larges (min ~44px) */
+  input, select, button {
+    padding: 0.65rem 0.8rem;
+    min-height: 44px;
+  }
+  #login-form button[type="submit"] { padding: 0.75rem; }
+
+  /* Barre d'outils : recherche pleine largeur, boutons en grille */
+  .toolbar { gap: 0.5rem; margin-bottom: 0.75rem; }
+  #search-input { flex-basis: 100%; min-width: 0; }
+  #mobile-sort {
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+  }
+  #mobile-sort select { flex: 1; }
+  #mobile-sort button { flex: 0 0 auto; min-width: 52px; }
+  #mobile-sort label { font-size: 0.85rem; font-weight: 600; align-self: center; margin: 0; }
+  #read-actions, #admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    width: 100%;
+  }
+  #read-actions button,
+  #admin-actions button { flex: 1 1 46%; padding: 0.6rem 0.4rem; }
+  #admin-actions button.primary { flex-basis: 100%; }
+
+  /* Tableau des membres -> cartes empilées */
+  #members-table thead { display: none; }
+  #members-table,
+  #members-table tbody,
+  #members-table tr,
+  #members-table td {
+    display: block;
+    width: 100%;
+  }
+  #members-table { border-collapse: separate; border-spacing: 0; }
+  #members-table tr {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card);
+    padding: 0.45rem 0.7rem;
+    margin-bottom: 0.6rem;
+  }
+  #members-table td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    border: none;
+    padding: 0.3rem 0;
+  }
+  #members-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    flex-shrink: 0;
+  }
+  #members-table td:last-child { border-bottom: none; }
+  #members-table td:empty { display: none; }
+  #members-table .copy-mini { min-height: 32px; }
+
+  /* Tableau des comptes : défilement horizontal */
+  .table-scroller table { min-width: 560px; }
+
+  /* Modales plein écran */
+  dialog {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100vh;
+    border: none;
+    border-radius: 0;
+    overflow-y: auto;
+  }
+  #member-details,
+  #member-modal .form-grid { padding-bottom: 1.5rem; }
+  .detail-list > div { grid-template-columns: 100px 1fr; gap: 0.4rem; }
+
+  .dialog-footer {
+    flex-wrap: wrap;
+    padding-bottom: max(1.1rem, env(safe-area-inset-bottom));
+  }
+  .dialog-footer button { flex: 1 1 40%; }
+
+  /* Arbre généalogique */
+  .tree-bar {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+  }
+  .tree-bar h2 { font-size: 1rem; }
+  .tree-zoom { width: 100%; }
+  .tree-zoom button {
+    flex: 1 1 auto;
+    font-size: 1.05rem;
+    padding: 0.6rem 0.8rem;
+  }
+}

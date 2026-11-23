@@ -244,6 +244,11 @@ function updateSortIndicators() {
       th.removeAttribute('aria-sort');
     }
   }
+  // Contrôle de tri mobile : reste synchronisé avec l'état du tri.
+  const mobileKey = document.getElementById('mobile-sort-key');
+  if (mobileKey) mobileKey.value = sortState.key;
+  const mobileDir = document.getElementById('mobile-sort-dir');
+  if (mobileDir) mobileDir.textContent = sortState.dir === 1 ? '↑' : '↓';
 }
 
 function getVisibleMembers() {
@@ -288,6 +293,12 @@ function renderTable() {
     const age = ageOf(m);
     tdAge.textContent = m.death_date ? `${age} ans (décédé·e)` : `${age} ans`;
 
+    // Libellés utilisés par l'affichage en cartes sur mobile.
+    tdFirst.dataset.label = 'Prénom';
+    tdLast.dataset.label = 'Nom';
+    tdBirth.dataset.label = 'Naissance';
+    tdAge.dataset.label = 'Âge';
+
     tr.append(tdFirst, tdLast, tdBirth, tdAge);
 
     if (role === 'admin') {
@@ -308,6 +319,7 @@ function renderTable() {
         deleteMember(m);
       });
       tdActions.append(editBtn, deleteBtn);
+      tdActions.dataset.label = 'Actions';
       tr.appendChild(tdActions);
     }
 
@@ -323,6 +335,25 @@ function renderTable() {
 // Recherche
 // ------------------------------------------------------------
 els.searchInput.addEventListener('input', renderTable);
+
+// Contrôle de tri mobile (l'en-tête du tableau est masqué sur petit écran).
+const mobileSortKey = document.getElementById('mobile-sort-key');
+const mobileSortDir = document.getElementById('mobile-sort-dir');
+if (mobileSortKey) {
+  mobileSortKey.value = sortState.key;
+  mobileSortKey.addEventListener('change', () => {
+    sortState = { key: mobileSortKey.value, dir: sortState.dir };
+    updateSortIndicators();
+    renderTable();
+  });
+}
+if (mobileSortDir) {
+  mobileSortDir.addEventListener('click', () => {
+    sortState.dir = -sortState.dir;
+    updateSortIndicators();
+    renderTable();
+  });
+}
 
 // ------------------------------------------------------------
 // Fiche détaillée
