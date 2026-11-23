@@ -111,7 +111,9 @@ button.danger:hover { background: var(--danger-hover); }
   margin: 0.5rem 0 0;
 }
 
-#login-form button[type="submit"] { width: 100%; margin-top: 0.75rem; }
+#login-form button[type="submit"],
+#code-form button[type="submit"] { width: 100%; margin-top: 0.75rem; }
+#code-form #resend-btn { width: 100%; margin-top: 0.5rem; }
 
 .toolbar {
   display: flex;
@@ -128,7 +130,7 @@ button.danger:hover { background: var(--danger-hover); }
 
 #admin-actions { display: flex; gap: 0.5rem; }
 
-#admin-actions[hidden], #users-section[hidden] { display: none; }
+#admin-actions[hidden] { display: none; }
 
 .table-wrap { padding: 0; overflow-x: auto; }
 
@@ -245,8 +247,6 @@ dialog::backdrop { background: rgba(15, 23, 42, 0.45); }
 #member-admin-actions[hidden] { display: none; }
 
 .session-role { color: var(--muted); font-size: 0.85rem; }
-
-.users-row-active td { color: var(--muted); }
 
 #read-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 #read-actions[hidden] { display: none; }

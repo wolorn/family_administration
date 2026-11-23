@@ -5,8 +5,17 @@ adossé à une base Supabase.
 
 ## Fonctionnalités
 
-- Accès aux données protégé par mot de passe : **chaque requête de lecture/écriture**
-  vers la base transporte le mot de passe, vérifié côté serveur (bcrypt) à chaque appel.
+- Accès par email + code à usage unique : l'utilisateur saisit l'adresse email
+  d'un membre, la base génère un **code à 6 chiffres à usage unique** et l'envoie
+  sur cette adresse (Edge Function `login-code`). Le code est stocké **hashé**,
+  valable 5 essais maxi, et sa **durée de validité est paramétrable dans
+  Supabase** (`app_settings`, clé `otp_validity_minutes`, défaut 10 minutes).
+  Une session à token opaque (256 bits, stocké hashé) prend ensuite le relais :
+  expirable et révocable côté serveur, avec une **durée paramétrable dans
+  Supabase** (`app_settings`, clé `session_validity_minutes`, défaut 1440 =
+  24 h, bornée de 5 minutes à 30 jours) et qui **glisse** à chaque usage :
+  une session reste valable tant qu'elle est utilisée au moins une fois par
+  durée paramétrée.
 - Tableau principal de tous les membres, triés par jour de l'année de naissance
   (anniversaires) : prénom, nom, date de naissance, âge.
 - Barre de recherche portant sur **tous les champs** d'un membre (adresse, dates,
@@ -33,9 +42,11 @@ adossé à une base Supabase.
   est un lien symétrique, cohérencé automatiquement dans les deux sens.
 - Le nom de la famille à administrer est configurable (table `app_settings`, lecture
   publique) et s'affiche en haut de la page, même avant connexion.
-- Comptes utilisateurs avec deux rôles : `admin` (lecture + écriture + gestion des
-  comptes) et `viewer` (lecture seule). Les écritures sont refusées côté serveur
-  pour les non-admins, pas seulement cachées dans l'interface.
+- Rôles portés par les **membres** : un membre peut porter le rôle `admin`
+  (lecture + écriture + gestion des rôles), accordé/retiré depuis sa fiche par
+  un admin. Tous les autres membres sont des `user` (lecture seule). Les
+  écritures sont refusées côté serveur pour les non-admins, pas seulement
+  cachées dans l'interface.
 - **Propositions de modification** : un utilisateur non admin peut ouvrir la fiche
   d'un membre, cliquer « Proposer une modification » et corriger ou compléter les
   champs. Rien n'est publié immédiatement : la proposition est stockée, un email
@@ -46,14 +57,17 @@ adossé à une base Supabase.
 - **Propositions d'ajout** : un utilisateur non admin peut aussi proposer la
   création d'un nouveau membre (« Proposer l'ajout d'un membre ») ; l'admin
   voit les champs proposés (tous en vert) et l'acceptation crée le membre.
-- **Anti brute-force renforcé** : au-delà du verrou par IP, un verrou global
-  (toutes IP confondues : 10 échecs en 15 minutes) bloque le site entier pour
-  tous les clients pendant le reste de la fenêtre — utile contre une attaque
-  répartie. Tout déclenchement de blocage envoie un email d'alerte aux
-  administrateurs (fonction Edge `notify-lockout`, appelée par pg_net).
+- **Anti brute-force sur la connexion** : le code de connexion s'épuise
+  (5 essais maxi puis invalidation) ; au-delà, il faut en redemander. Un verrou
+  par IP (15 échecs de code en 15 minutes) bloque les nouvelles tentatives, et
+  son déclenchement envoie un email d'alerte aux administrateurs (fonction Edge
+  `notify-lockout`, appelée par pg_net). Les demandes de code sont elles-mêmes
+  plafonnées (délai d'1 minute par adresse, 10/h par adresse, 30/15 min par IP).
 - **Keep-alive de la base** : au chargement de la page, le site envoie 50 pings
   discrets (fonction `site_ping`, trace `traffic_logging`, purge > 1 jour) pour
-  éviter la mise en pause automatique de la base Supabase gratuite.
+  éviter la mise en pause automatique de la base Supabase gratuite. Un plafond
+  borne la table : au-delà de 100 000 traces de moins de 24 h (attaque par
+  automatisation), les insertions sont silencieusement ignorées.
 
 ## Sécurité
 
@@ -61,8 +75,9 @@ adossé à une base Supabase.
   `upsert_member`, `set_parent`, …) : les tables sont protégées par RLS sans aucune
   policy, donc l'accès direct depuis le navigateur avec la clé anon est refusé.
 - Les mots de passe sont stockés hachés avec bcrypt (`pgcrypto`), jamais en clair.
-- **Protection anti brute-force** : chaque appel RPC vérifiant le mot de passe est
-  journalisé (`auth_attempts`) avec trois niveaux — verrou par IP (5 échecs en
+- **Protection anti brute-force** : la connexion (et tout appel RPC vérifiant
+  le mot de passe) est journalisée (`auth_attempts`) avec trois niveaux —
+  verrou par IP (5 échecs en
   15 minutes), verrou global toutes IP (10 échecs en 15 minutes, contre les
   attaques réparties). Pendant un blocage, même un mot de passe correct est
   refusé (message affiché avec le délai restant) ; un succès remet le compteur
@@ -70,6 +85,9 @@ adossé à une base Supabase.
   email d'alerte aux administrateurs via la fonction Edge `notify-lockout`
   (pg_net depuis Postgres, comme `notify-proposal`).
 - Il ne peut jamais exister moins d'un compte administrateur actif.
+- Les fonctions Edge exigent un secret partagé (`EDGE_SHARED_SECRET`,
+  en-tête `x-webhook-secret`) connu uniquement de Postgres : impossible
+  de les appeler depuis l'extérieur pour inonder les admins d'emails.
 - Limitation connue : le verrou par IP dépend de l'en-tête `X-Forwarded-For`
   transmis par PostgREST ; s'il était absent, toutes les requêtes partageraient
   le bucket « inconnu ». En pratique, Supabase le transmet systématiquement.
@@ -83,16 +101,28 @@ adossé à une base Supabase.
      `03_add_spouse.sql`, `04_grant_app_settings_anon.sql`,
      `05_member_proposals.sql`, `06_propose_new_members.sql`,
      `07_brute_force_protection.sql`, `08_global_lock_alert.sql`,
-     `09_traffic_keepalive.sql` (le nom de famille
+     `09_traffic_keepalive.sql`, `10_session_tokens.sql`, `11_site_ping_limit.sql`,
+     `09_traffic_keepalive.sql`, `10_session_tokens.sql`, `11_site_ping_limit.sql`,
+     `12_edge_shared_secret.sql` puis `13_email_code_login.sql`
+     (le nom de famille
      par défaut « Ma Famille » se change dans la table `app_settings` :
      `update app_settings set value = '…' where key = 'family_name';`).
 
-2. **Changer les mots de passe initiaux**
-   Dans le SQL Editor :
+2. **Définir les administrateurs**
+   Le rôle est porté par le **membre**. Pour le premier admin, dans le SQL
+   Editor :
    ```sql
-   update app_users set password_hash = crypt('VOTRE_MOT_DE_PASSE_ADMIN', gen_salt('bf', 12)) where username = 'admin';
-   update app_users set password_hash = crypt('VOTRE_MOT_DE_PASSE_FAMILLE', gen_salt('bf', 12)) where username = 'famille';
+   update members set role = 'admin' where id = '<uuid du membre>';
    ```
+   Ensuite, les admins basculent le rôle depuis le site (fiche membre →
+   bouton « Donner / retirer le rôle admin »). Le dernier admin ne peut pas
+   être rétrogradé. Chaque membre qui doit se connecter doit avoir une
+   adresse email **renseignée et unique** dans la base.
+
+   Réglages dans `app_settings` (Table Editor ou SQL) :
+   - `otp_validity_minutes` : durée de validité du code (défaut 10 min) ;
+   - `session_validity_minutes` : durée d'une session (défaut 1440 = 24 h,
+     glissante : repoussée à chaque requête tant que la session est utilisée).
 
 3. **Configurer le frontend**
    Dans le Dashboard Supabase (*Settings → API*), récupérez l'URL du projet et la
@@ -105,18 +135,24 @@ adossé à une base Supabase.
    - Pour GitHub Pages : poussez le dépôt puis *Settings → Pages → Deploy from
      branch → main / (root)*.
 
-## Créer des comptes supplémentaires
+## Rôles des membres
 
-Connectez-vous sur le site avec le compte `admin`, ouvrez « Utilisateurs » :
-vous pouvez y créer des comptes (lecture seule ou admin), changer un mot de passe,
-désactiver ou supprimer un compte.
+La connexion se fait par email + code à usage unique (voir la mise en place).
+Le rôle est porté par le membre : connecté en admin, ouvrez la fiche d'un
+membre et utilisez « Donner / retirer le rôle admin ». Tout membre avec une
+adresse email renseignée peut se connecter (rôle « user », lecture seule +
+propositions de modification) ; seuls les « admin » modifient directement et
+basculent les rôles.
 
-## Notifications email (propositions et alertes de blocage)
+## Notifications email (codes de connexion, propositions et alertes)
 
-Deux fonctions Edge envoient des emails en SMTP via votre compte Proton Mail :
+Trois fonctions Edge envoient des emails en SMTP via votre compte Proton Mail :
 
+- `login-code` : envoie le code à usage unique de connexion (invoquée depuis
+  Postgres par pg_net, migration `13_email_code_login.sql`) ;
 - `notify-proposal` : email aux admins lors d'une proposition de modification/ajout
-  (invoquée depuis le navigateur après enregistrement) ;
+  (invoquée depuis Postgres par pg_net via le trigger de la migration
+  `12_edge_shared_secret.sql`) ;
 - `notify-lockout` : alerte quand un blocage anti brute-force se déclenche
   (invoquée depuis Postgres par pg_net, migration `08_global_lock_alert.sql`).
 
@@ -129,10 +165,12 @@ Déploiement (Supabase CLI installée et projet lié) :
 ```sh
 supabase functions deploy notify-proposal
 supabase functions deploy notify-lockout
+supabase functions deploy login-code
 supabase secrets set SMTP_USER="nom_utilisateur_du_jeton" \
   SMTP_PASS="mot_de_passe_du_jeton" \
   NOTIFY_FROM_EMAIL="vous@exemple.fr" \
-  NOTIFY_TO_EMAILS="admin1@exemple.fr,admin2@exemple.fr"
+  NOTIFY_TO_EMAILS="admin1@exemple.fr,admin2@exemple.fr" \
+  EDGE_SHARED_SECRET="valeur_longue_aleatoire"
 ```
 
 Secrets :
@@ -142,6 +180,15 @@ Secrets :
 - `NOTIFY_FROM_EMAIL` : émetteur ; doit être l'adresse de votre compte
   Proton ou un de ses alias.
 - `NOTIFY_TO_EMAILS` : adresses des administrateurs, séparées par des virgules.
+- `EDGE_SHARED_SECRET` : secret partagé exigé par les deux fonctions
+  (en-tête `x-webhook-secret`, sinon elles répondent 401). La même valeur
+  doit être enregistrée en base à l'insertion suivante :
+  ```sql
+  insert into app_secrets (key, value)
+  values ('edge_shared_secret', 'valeur_longue_aleatoire');
+  ```
+  Le secret ne vit que côté serveur (secrets Supabase + table privée) ;
+  le navigateur ne l'utilise jamais.
 
 L'équivalent est possible via le portail web : *Edge Functions → Create a new
 function → Via Dashboard*, collez le code puis onglet *Secrets* de la fonction.
