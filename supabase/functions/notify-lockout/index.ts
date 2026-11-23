@@ -3,12 +3,14 @@
 //
 // Alerte email aux administrateurs lorsqu'un blocage anti
 // brute-force se déclenche (verrou par IP ou verrou global).
-// Appelée depuis Postgres via pg_net (migration 08), ou à la main
-// pour test avec supabase.functions.invoke('notify-lockout').
+// Appelée depuis Postgres via pg_net (migration 08).
 //
 // Mêmes secrets SMTP que notify-proposal :
 //   SMTP_USER, SMTP_PASS, NOTIFY_FROM_EMAIL, NOTIFY_TO_EMAILS
 //   (SMTP_HOST / SMTP_PORT facultatifs, défauts Proton)
+// plus EDGE_SHARED_SECRET : chaque requête doit porter l'en-tête
+// « x-webhook-secret » égal à ce secret, sinon la fonction
+// répond 401. La même valeur vit dans app_secrets (migration 12).
 // ============================================================
 
 import nodemailer from 'npm:nodemailer@6.9.13';
@@ -33,6 +35,18 @@ Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Secret partagé : seul Postgres (pg_net) connaît cette valeur,
+  // envoyée dans l'en-tête x-webhook-secret. Sans correspondance :
+  // 401, la fonction ne divulgue rien.
+  const edgeSecret = Deno.env.get('EDGE_SHARED_SECRET');
+  const providedSecret = req.headers.get('x-webhook-secret');
+  if (!edgeSecret || providedSecret !== edgeSecret) {
+    return new Response(JSON.stringify({ error: 'Non autorisé' }), {
+      status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

@@ -710,22 +710,6 @@ function formatProposalValue(key, raw) {
   return raw;
 }
 
-function computeProposalChanges(member, payload) {
-  const changes = [];
-  for (const [key, label] of PROPOSAL_FIELDS) {
-    const before = currentFieldValue(member, key);
-    const after = payload[key] || null;
-    if ((before ?? '') !== (after ?? '')) {
-      changes.push({
-        field: label,
-        from: formatProposalValue(key, before),
-        to: formatProposalValue(key, after),
-      });
-    }
-  }
-  return changes;
-}
-
 // Soumission d'une proposition (modification ou ajout) par un
 // utilisateur non admin. existing = membre concerné, null pour
 // une proposition de création.
@@ -744,28 +728,15 @@ async function submitProposal(existing) {
     mere: $('f-mere').value || '',
     spouse: $('f-conjoint').value || '',
   };
-  const changes = computeProposalChanges(existing, payload);
-
   try {
     els.formSubmit.disabled = true;
     const res = await rpc('submit_proposal', {
-            p_member_id: existing ? existing.id : null,
+      p_member_id: existing ? existing.id : null,
       p_proposal: payload,
     });
-    // Notification email des admins : facultative, l'échec n'annule
-    // pas la proposition (voir README déploiement de la fonction).
-    try {
-      const { error } = await supabase.functions.invoke('notify-proposal', {
-        body: {
-          member: `${payload.first_name} ${payload.last_name}`,
-          proposed_by: res ? res.username : '',
-          changes,
-        },
-      });
-      if (error) console.warn('Notification admin non envoyée :', error.message);
-    } catch (notifyErr) {
-      console.warn('Notification admin non envoyée :', notifyErr);
-    }
+    // Notification email des admins : déclenchée côté base par le
+    // trigger de la migration 12 (part de Postgres, jamais du
+    // navigateur) ; son échec éventuel n'annule pas la proposition.
     els.formModal.close();
     showGlobalSuccess(existing
       ? 'Proposition envoyée : elle sera visible après validation par un administrateur.'

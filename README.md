@@ -76,6 +76,9 @@ adossé à une base Supabase.
   email d'alerte aux administrateurs via la fonction Edge `notify-lockout`
   (pg_net depuis Postgres, comme `notify-proposal`).
 - Il ne peut jamais exister moins d'un compte administrateur actif.
+- Les fonctions Edge exigent un secret partagé (`EDGE_SHARED_SECRET`,
+  en-tête `x-webhook-secret`) connu uniquement de Postgres : impossible
+  de les appeler depuis l'extérieur pour inonder les admins d'emails.
 - Limitation connue : le verrou par IP dépend de l'en-tête `X-Forwarded-For`
   transmis par PostgREST ; s'il était absent, toutes les requêtes partageraient
   le bucket « inconnu ». En pratique, Supabase le transmet systématiquement.
@@ -89,8 +92,8 @@ adossé à une base Supabase.
      `03_add_spouse.sql`, `04_grant_app_settings_anon.sql`,
      `05_member_proposals.sql`, `06_propose_new_members.sql`,
      `07_brute_force_protection.sql`, `08_global_lock_alert.sql`,
-     `09_traffic_keepalive.sql`, `10_session_tokens.sql`, `11_site_ping_limit.sql`
-     (le nom de famille
+     `09_traffic_keepalive.sql`, `10_session_tokens.sql`, `11_site_ping_limit.sql`,
+     `12_edge_shared_secret.sql` (le nom de famille
      par défaut « Ma Famille » se change dans la table `app_settings` :
      `update app_settings set value = '…' where key = 'family_name';`).
 
@@ -123,7 +126,8 @@ désactiver ou supprimer un compte.
 Deux fonctions Edge envoient des emails en SMTP via votre compte Proton Mail :
 
 - `notify-proposal` : email aux admins lors d'une proposition de modification/ajout
-  (invoquée depuis le navigateur après enregistrement) ;
+  (invoquée depuis Postgres par pg_net via le trigger de la migration
+  `12_edge_shared_secret.sql`) ;
 - `notify-lockout` : alerte quand un blocage anti brute-force se déclenche
   (invoquée depuis Postgres par pg_net, migration `08_global_lock_alert.sql`).
 
@@ -139,7 +143,8 @@ supabase functions deploy notify-lockout
 supabase secrets set SMTP_USER="nom_utilisateur_du_jeton" \
   SMTP_PASS="mot_de_passe_du_jeton" \
   NOTIFY_FROM_EMAIL="vous@exemple.fr" \
-  NOTIFY_TO_EMAILS="admin1@exemple.fr,admin2@exemple.fr"
+  NOTIFY_TO_EMAILS="admin1@exemple.fr,admin2@exemple.fr" \
+  EDGE_SHARED_SECRET="valeur_longue_aleatoire"
 ```
 
 Secrets :
@@ -149,6 +154,15 @@ Secrets :
 - `NOTIFY_FROM_EMAIL` : émetteur ; doit être l'adresse de votre compte
   Proton ou un de ses alias.
 - `NOTIFY_TO_EMAILS` : adresses des administrateurs, séparées par des virgules.
+- `EDGE_SHARED_SECRET` : secret partagé exigé par les deux fonctions
+  (en-tête `x-webhook-secret`, sinon elles répondent 401). La même valeur
+  doit être enregistrée en base à l'insertion suivante :
+  ```sql
+  insert into app_secrets (key, value)
+  values ('edge_shared_secret', 'valeur_longue_aleatoire');
+  ```
+  Le secret ne vit que côté serveur (secrets Supabase + table privée) ;
+  le navigateur ne l'utilise jamais.
 
 L'équivalent est possible via le portail web : *Edge Functions → Create a new
 function → Via Dashboard*, collez le code puis onglet *Secrets* de la fonction.

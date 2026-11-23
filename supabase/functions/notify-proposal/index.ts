@@ -2,22 +2,29 @@
 // Edge Function : notify-proposal
 //
 // Notifie les administrateurs par email (SMTP, ex. Proton Mail)
-// lorsqu'une proposition de modification est soumise. Appelée
-// depuis le navigateur avec supabase.functions.invoke('notify-proposal').
+// lorsqu'une proposition de modification/ajout est soumise.
+// Appelée depuis Postgres par pg_net via le trigger de la
+// migration 12 (le navigateur ne l'appelle plus).
 //
 // Déploiement via CLI :
 //   supabase functions deploy notify-proposal
 //   supabase secrets set SMTP_USER="jeton_smtp" \
 //     SMTP_PASS="mot_de_passe_du_jeton" \
 //     NOTIFY_FROM_EMAIL="famille@exemple.fr" \
-//     NOTIFY_TO_EMAILS="admin1@exemple.fr,admin2@exemple.fr"
+//     NOTIFY_TO_EMAILS="admin1@exemple.fr,admin2@exemple.fr" \
+//     EDGE_SHARED_SECRET="valeur_longue_aleatoire"
+//
+// La même valeur EDGE_SHARED_SECRET doit être insérée dans la table
+// app_secrets (key = 'edge_shared_secret') par la migration 12 :
+// chaque requête doit porter l'en-tête « x-webhook-secret » égal
+// à ce secret, sinon la fonction répond 401.
 //
 // SMTP_HOST et SMTP_PORT sont facultatifs (défauts Proton :
 // smtp.protonmail.ch, 587). NOTIFY_FROM_EMAIL doit être une adresse
 // de votre compte Proton (ou un de ses alias).
 //
 // Si la fonction n'est pas déployée ou échoue, la proposition reste
-// enregistrée en base (le front ignore l'échec de notification).
+// enregistrée en base (l'erreur de notification est sans effet).
 // ============================================================
 
 import nodemailer from 'npm:nodemailer@6.9.13';
@@ -32,6 +39,7 @@ interface NotifyBody {
   member?: string;
   proposed_by?: string;
   changes?: ProposalChange[];
+  kind?: string;
 }
 
 const corsHeaders = {
@@ -47,6 +55,18 @@ Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Secret partagé : seul Postgres (pg_net) connaît cette valeur,
+  // envoyée dans l'en-tête x-webhook-secret. Sans correspondance :
+  // 401, la fonction ne divulgare rien.
+  const edgeSecret = Deno.env.get('EDGE_SHARED_SECRET');
+  const providedSecret = req.headers.get('x-webhook-secret');
+  if (!edgeSecret || providedSecret !== edgeSecret) {
+    return new Response(JSON.stringify({ error: 'Non autorisé' }), {
+      status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
@@ -93,10 +113,15 @@ Deno.serve(async (req: Request) => {
 
   const html = `
     <div style="font-family:sans-serif;max-width:640px;">
-      <h2 style="margin-bottom:4px;">Proposition de modification</h2>
+      <h2 style="margin-bottom:4px;">${body.kind === 'creation'
+        ? "Proposition d'ajout de membre"
+        : 'Proposition de modification'}</h2>
       <p>
-        <strong>${escapeHtml(proposedBy)}</strong> a proposé une modification
-        de la fiche de <strong>${escapeHtml(member)}</strong>.
+        <strong>${escapeHtml(proposedBy)}</strong> a proposé ${
+          body.kind === 'creation'
+            ? "l'ajout d'un nouveau membre :"
+            : 'une modification de la fiche de'
+        } <strong>${escapeHtml(member)}</strong>.
       </p>
       ${changes.length > 0
         ? `<table style="border-collapse:collapse;max-width:640px;">
