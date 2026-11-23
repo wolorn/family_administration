@@ -6,7 +6,7 @@ adossé à une base Supabase.
 ## Fonctionnalités
 
 - Accès par email + code à usage unique : l'utilisateur saisit l'adresse email
-  d'un membre, la base génère un **code à 6 chiffres à usage unique** et l'envoie
+  d'un membre, la base génère un **code à 8 chiffres à usage unique** et l'envoie
   sur cette adresse (Edge Function `login-code`). Le code est stocké **hashé**,
   valable 5 essais maxi, et sa **durée de validité est paramétrable dans
   Supabase** (`app_settings`, clé `otp_validity_minutes`, défaut 10 minutes).
@@ -62,7 +62,14 @@ adossé à une base Supabase.
   par IP (15 échecs de code en 15 minutes) bloque les nouvelles tentatives, et
   son déclenchement envoie un email d'alerte aux administrateurs (fonction Edge
   `notify-lockout`, appelée par pg_net). Les demandes de code sont elles-mêmes
-  plafonnées (délai d'1 minute par adresse, 10/h par adresse, 30/15 min par IP).
+  plafonnées (délai d'1 minute par adresse, 10/h par adresse, 30/15 min par IP,
+  et 500/15 min au global toutes IP confondues).
+- **Anti énumération des emails** : la demande de code répond de façon
+  identique que l'adresse existe ou non (migration
+  `15_email_enumeration_protection.sql`) ; seuls les plafonds et l'erreur de
+  format produisent des messages visibles, et aucun code n'est envoyé aux
+  adresses non reconnues. On ne peut donc pas deviner quelles adresses email font
+  partie de la famille.
 - **Keep-alive de la base** : au chargement de la page, le site envoie 50 pings
   discrets (fonction `site_ping`, trace `traffic_logging`, purge > 1 jour) pour
   éviter la mise en pause automatique de la base Supabase gratuite. Un plafond
@@ -103,7 +110,8 @@ adossé à une base Supabase.
      `07_brute_force_protection.sql`, `08_global_lock_alert.sql`,
      `09_traffic_keepalive.sql`, `10_session_tokens.sql`, `11_site_ping_limit.sql`,
      `09_traffic_keepalive.sql`, `10_session_tokens.sql`, `11_site_ping_limit.sql`,
-     `12_edge_shared_secret.sql` puis `13_email_code_login.sql`
+     `12_edge_shared_secret.sql` puis `13_email_code_login.sql`,
+     `14_code_8_digits.sql` et `15_email_enumeration_protection.sql`
      (le nom de famille
      par défaut « Ma Famille » se change dans la table `app_settings` :
      `update app_settings set value = '…' where key = 'family_name';`).
@@ -155,6 +163,9 @@ Trois fonctions Edge envoient des emails en SMTP via votre compte Proton Mail :
   `12_edge_shared_secret.sql`) ;
 - `notify-lockout` : alerte quand un blocage anti brute-force se déclenche
   (invoquée depuis Postgres par pg_net, migration `08_global_lock_alert.sql`).
+
+Après la migration `14_code_8_digits.sql` (code à 8 chiffres), redéployer
+`login-code` : sa validation passe de 6 à 8 chiffres.
 
 Pré-requis côté Proton : créez un **jeton SMTP** (Proton Mail →
 *Tous les réglages → IMAP/SMTP → Jetons SMTP → Générer*) et notez le nom
