@@ -190,7 +190,9 @@ async function loginWithCode() {
       p_email: pendingLoginEmail,
       p_code: els.loginCode.value.trim(),
     });
-    if (!res || !res.token) throw new Error('Code invalide.');
+    // Depuis la migration 16, login_with_code renvoie { error } au lieu de lever
+    // une exception (sinon l'échec n'est pas enregistré) : afficher le message précis.
+    if (!res || !res.token) throw new Error((res && res.error) || 'Code invalide.');
     sessionToken = res.token;
     role = res.role;
     sessionStorage.setItem('family_admin_session', res.token);
