@@ -241,7 +241,10 @@ function showApp() {
   els.thActions.hidden = !isAdmin;
   updateSortIndicators();
   renderTable();
-  if (isAdmin) refreshProposalsCount();
+  if (isAdmin) {
+    refreshProposalsCount();
+    sendKeepAlive(); // keep-alive réservé aux sessions administrateur
+  }
 }
 
 function showGlobalError(message) {
@@ -1089,7 +1092,9 @@ for (const dialog of document.querySelectorAll('dialog')) {
 // ------------------------------------------------------------
 // Keep-alive : génère du trafic pour éviter la mise en pause de la
 // base gratuite (même stratégie que le projet "75 ans"). 50 pings
-// discrets au chargement de la page, sans bloquer le reste.
+// discrets, déclenchés uniquement à l'ouverture d'une session
+// ADMINISTRATEUR (la fonction site_ping refuse désormais tout
+// appel sans session admin ouverte — migration 17).
 // ------------------------------------------------------------
 const KEEPALIVE_PING_COUNT = 50;
 
@@ -1105,11 +1110,13 @@ function getClientId() {
 }
 
 function sendKeepAlive() {
-  if (!supabase) return;
+  if (!supabase || !sessionToken) return;
   const clientId = getClientId();
   const calls = [];
   for (let i = 0; i < KEEPALIVE_PING_COUNT; i++) {
-    calls.push(supabase.rpc('site_ping', { p_client_id: clientId }));
+    // rpc() ajoute p_session_token automatiquement (site_ping n'est
+    // pas dans RPC_NO_SESSION).
+    calls.push(rpc('site_ping', { p_client_id: clientId }));
   }
   Promise.allSettled(calls).catch(() => {});
 }
@@ -1122,7 +1129,8 @@ async function init() {
     showError(els.configError, 'Supabase n\'est pas configuré. Éditez js/config.js (URL et clé anon).');
     return;
   }
-  sendKeepAlive();
+  // Keep-alive supprimé ici : les pings ne partent qu'à l'ouverture
+  // d'une session administrateur (voir showApp).
   await loadFamilyName();
   if (sessionToken) {
     try {
